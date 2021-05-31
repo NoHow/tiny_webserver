@@ -1,6 +1,70 @@
-<h1>Editing {{.Title}}</h1>
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            .tws-light-grey {
+                color: #000 !important;
+                background-color: #f1f1f1 !important;
+            }
 
-<form action="/save/{{.Title}}" method="POST">
-    <div><textarea name="body" rows="20" cols="80">{{printf "%s" .Body}}</textarea></div>
-    <div><input type="submit" value="Save"></div>
-</form>
+            .tws-content {
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .tws-padding-32 {
+                padding-top: 32px !important;
+                padding-bottom: 32px !important;
+            }
+
+            .tws-center {
+                text-align: center !important;
+            }
+
+            .tws-container, .tws-panel {
+                padding: 0.01em 16px;
+                padding-top: 0.01em;
+                padding-bottom: 0.01em;
+            }
+            .tws-white, .tws-hover-white:hover {
+                color: #000 !important;
+                background-color: #fff !important;
+            }
+            .tws-padding-large {
+                padding: 12px 24px !important;
+            }
+            .tws-border {
+                border: 1px solid #ccc !important;
+            }
+            .tws-button {
+                -webkit-touch-callout: none;
+                -webkit-user-select: none;
+                -khtml-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+            }
+            .tws-button:hover {
+                color: #ccc;
+                background: #ccc !important;
+            }
+
+        </style>
+        <link rel="stylesheet" href="css/tws-style.css">
+        <title>{{.Title}}</title>
+    </head>
+    <body class="tws-light-grey">
+    <div class="tws-content" style="max-width: 1400px">
+        <header class="tws-container tws-center tws-padding-32">
+            <h1>
+                <b>Editing {{.Title}}</b>
+            </h1>
+        </header>
+
+        <form class="tws-center" action="/save/{{.Title}}" method="POST">
+            <div><textarea name="body" rows="20" cols="80">{{printf "%s" .Body}}</textarea></div>
+            <div><input class="tws-button tws-padding-large tws-white tws-border" type="submit" value="Save"></div>
+        </form>
+    </div>
+    </body>
+</html>

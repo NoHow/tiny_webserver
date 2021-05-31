@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -35,15 +34,6 @@ func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	}
 }
 
-func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
-	m := validPath.FindStringSubmatch(r.URL.Path)
-	if m != nil {
-		http.NotFound(w, r)
-		return "", errors.New("invalid Page Title")
-	}
-	return m[2], nil
-}
-
 func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
 	p, err := loadPage(title)
 	if err != nil {
@@ -74,6 +64,10 @@ func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
+func rootHandler(w http.ResponseWriter, r *http.Request, title string) {
+	http.Redirect(w, r, "/view/index", http.StatusFound)
+}
+
 func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m := validPath.FindStringSubmatch(r.URL.Path)
@@ -86,11 +80,12 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 }
 
 var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html"))
-var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$|[/]")
 
 func main() {
 	http.HandleFunc("/view/", makeHandler(viewHandler))
 	http.HandleFunc("/edit/", makeHandler(editHandler))
 	http.HandleFunc("/save/", makeHandler(saveHandler))
+	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
