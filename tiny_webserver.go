@@ -64,12 +64,37 @@ func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
+func cssHandler(w http.ResponseWriter, r *http.Request, title string) {
+	filename := r.URL.Path[len("/"):]
+	body, err := ioutil.ReadFile(filename)
+	if err != nil{
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	contentType := "text/css"
+	w.Header().Add("Content-Type", contentType)
+	w.Write(body)
+}
+
+func testHandler(w http.ResponseWriter, r *http.Request, title string) {
+	p, err := loadPage("testdata")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	renderTemplate(w, "test", p)
+}
+
 func rootHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/index", http.StatusFound)
 }
 
 func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Trying to process request %s", r.URL)
+
 		m := validPath.FindStringSubmatch(r.URL.Path)
 		if m == nil {
 			http.NotFound(w, r)
@@ -79,13 +104,15 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
-var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html"))
-var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$|[/]")
+var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html", "tmpl/test.html"))
+var validPath = regexp.MustCompile("^/(edit|save|view|test)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
 func main() {
 	http.HandleFunc("/view/", makeHandler(viewHandler))
 	http.HandleFunc("/edit/", makeHandler(editHandler))
 	http.HandleFunc("/save/", makeHandler(saveHandler))
+	http.HandleFunc("/test/", makeHandler(testHandler))
+	http.HandleFunc("/tmpl/css/", makeHandler(cssHandler))
 	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
