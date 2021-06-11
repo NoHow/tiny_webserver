@@ -1,0 +1,3 @@
+environment:
+  - AUTH_GITHUB_CID=cbe38b6caefb0febf191
+  - AUTH_GITHUB_CSEC=1111
