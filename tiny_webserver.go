@@ -8,9 +8,20 @@ import (
 	"regexp"
 )
 
+var gUserData = UserData{}
+
 type Page struct {
 	Title string
 	Body []byte
+	UData UserData
+}
+
+type UserData struct {
+	Login string
+	FirstName string
+	LastName string
+	AvatarUrl string
+	IsLoggined bool
 }
 
 func (p *Page) save() error {
@@ -24,11 +35,22 @@ func loadPage(title string) (*Page, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Page{Title: title, Body: body}, nil
+	return &Page{Title: title, Body: body, UData: gUserData}, nil
 }
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	err := templates.ExecuteTemplate(w, tmpl+".html",p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func profileHandler(w http.ResponseWriter, r *http.Request, title string) {
+	if !gUserData.IsLoggined {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+	err := templates.ExecuteTemplate(w, "profile.html", gUserData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -104,17 +126,19 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
-var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html", "tmpl/test.html"))
+var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html", "tmpl/test.html", "tmpl/profile.html"))
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
 func main() {
 
+	http.HandleFunc("/profile/", makeHandler(profileHandler))
 	http.HandleFunc("/view/", makeHandler(viewHandler))
 	http.HandleFunc("/edit/", makeHandler(editHandler))
 	http.HandleFunc("/save/", makeHandler(saveHandler))
 	http.HandleFunc("/test/", makeHandler(testHandler))
 	http.HandleFunc("/tmpl/css/", makeHandler(cssHandler))
 	http.HandleFunc("/login/", makeHandler(loginHandler))
+	http.HandleFunc("/logout/", makeHandler(logoutHandler))
 	http.HandleFunc("/github", makeHandler(githubHandler))
 	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))

@@ -2,15 +2,23 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"golang.org/x/oauth2"
+	"gopkg.in/yaml.v3"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"time"
-	"io/ioutil"
-	"gopkg.in/yaml.v3"
 )
+
+type githubUserData struct {
+	Login string `json:"login"`
+	FirstName string
+	LastName string
+	AvatarUrl string `json:"avatar_url"`
+}
 
 var conf = &oauth2.Config{
 	ClientID: 		"",
@@ -69,6 +77,20 @@ func loginHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
+func loadUserData(data []byte) bool {
+	var userData githubUserData
+	json.Unmarshal(data, &userData)
+
+	gUserData.Login = userData.Login
+	gUserData.AvatarUrl = userData.AvatarUrl
+
+	if len(gUserData.Login) != 0 {
+		gUserData.IsLoggined = true
+		return true
+	}
+	return false
+}
+
 func githubHandler(w http.ResponseWriter, r *http.Request, title string) {
 	ctx := context.Background()
 
@@ -90,7 +112,33 @@ func githubHandler(w http.ResponseWriter, r *http.Request, title string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	respBody, err := ioutil.ReadAll(resp.Body)
+	if loadUserData(respBody) {
+		userstateFile, err := os.OpenFile("data/userstate.json", os.O_CREATE, 0600)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		data, err := json.Marshal(gUserData)
+		if err != nil {
+			log.Fatal(err)
+		}
+		_, err = userstateFile.Write(data)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	log.Printf("Received response with user data %v", string(respBody))
-	http.Redirect(w, r, "/view/profile", http.StatusFound)
+	http.Redirect(w, r, "/profile", http.StatusFound)
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request, title string) {
+	if !gUserData.IsLoggined {
+		return
+	}
+
+	gUserData = UserData{}
+	http.Redirect(w, r, "/", http.StatusFound)
 }

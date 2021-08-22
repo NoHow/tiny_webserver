@@ -41,3 +41,7 @@
     color: #ccc;
     background: #ccc !important;
 }
+
+.tws-right {
+    float: right !important;
+}

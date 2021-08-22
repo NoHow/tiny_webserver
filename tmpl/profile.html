@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" href="/tmpl/css/tws-style.css">
+        <title>Profile Page</title>
+    </head>
+    <body class="tws-light-grey">
+    <div class="tws-content" style="max-width: 1400px">
+        <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="/">
+            Main page
+        </a>
+        <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="/logout/">
+            LOG OUT
+        </a>
+        <header class="tws-container tws-center tws-padding-32">
+            <div class="tws-center">
+                <h1>
+                    <b>Profile Page</b>
+                </h1>
+            </div>
+            <p>Hello, {{.Login}}!</p>
+            <img src="{{.AvatarUrl}}" alt="User avatar">
+        </header>
+    </div>
+    </body>
+</html>
