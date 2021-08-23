@@ -25,13 +25,11 @@ type UserData struct {
 }
 
 func (p *Page) save() error {
-	filename := "data/"+p.Title+".txt"
-	return ioutil.WriteFile(filename, p.Body, 0600)
+	return SavePage(p.Title, p.Body)
 }
 
 func loadPage(title string) (*Page, error) {
-	filename := "data/"+title+".txt"
-	body, err := ioutil.ReadFile(filename)
+	body, err := GetPage(title)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +128,7 @@ var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.h
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
 func main() {
+	InitDB()
 
 	http.HandleFunc("/profile/", makeHandler(profileHandler))
 	http.HandleFunc("/view/", makeHandler(viewHandler))

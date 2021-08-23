@@ -30,3 +30,4 @@
 .idea/**/dbnavigator.xml
 
 config/config.yml
+data/*
