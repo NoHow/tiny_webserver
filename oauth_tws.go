@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
@@ -15,8 +17,7 @@ import (
 
 type githubUserData struct {
 	Login string `json:"login"`
-	FirstName string
-	LastName string
+	Email string `json:"email"`
 	AvatarUrl string `json:"avatar_url"`
 }
 
@@ -38,6 +39,10 @@ func init() {
 type OauthData struct {
 	Auth_github_cid string
 	Auth_github_csec string
+}
+
+type SuperAdminStruct struct {
+	SuperAdminId string `yaml:"super_admin_id"`
 }
 
 func loadConfig()  {
@@ -77,18 +82,25 @@ func loginHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
-func loadUserData(data []byte) bool {
+func loadUserData(data []byte) {
 	var userData githubUserData
 	json.Unmarshal(data, &userData)
 
-	gUserData.Login = userData.Login
+	sha1Client := sha1.New()
+	sha1Client.Write([]byte(userData.Login))
+	gUserData.UserID = hex.EncodeToString(sha1Client.Sum([]byte(userData.Email)))
 	gUserData.AvatarUrl = userData.AvatarUrl
 
-	if len(gUserData.Login) != 0 {
+	if len(gUserData.UserID) != 0 {
+		syncedUserData, err := SyncUserWithDB(gUserData)
+		gUserData = syncedUserData
+		if err != nil {
+			log.Println(err)
+			gUserData.IsLoggined = false
+			return
+		}
 		gUserData.IsLoggined = true
-		return true
 	}
-	return false
 }
 
 func githubHandler(w http.ResponseWriter, r *http.Request, title string) {
@@ -97,7 +109,9 @@ func githubHandler(w http.ResponseWriter, r *http.Request, title string) {
 	code := r.FormValue("code")
 	stateCheck := r.FormValue("state")
 	if len(code) == 0 || stateCheck != randomStateString {
-		log.Fatal("Something wrong with authentication response :(")
+		log.Println("Something wrong with authentication response :(")
+		http.Redirect(w, r, "/profile", http.StatusFound)
+		return
 	}
 	log.Printf("Received authorization code - %v", code)
 
@@ -114,21 +128,7 @@ func githubHandler(w http.ResponseWriter, r *http.Request, title string) {
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
-	if loadUserData(respBody) {
-		userstateFile, err := os.OpenFile("data/userstate.json", os.O_CREATE, 0600)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		data, err := json.Marshal(gUserData)
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = userstateFile.Write(data)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
+	loadUserData(respBody)
 
 	log.Printf("Received response with user data %v", string(respBody))
 	http.Redirect(w, r, "/profile", http.StatusFound)
@@ -139,6 +139,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request, title string) {
 		return
 	}
 
-	gUserData = UserData{}
+	gUserData = TwsUserData{}
 	http.Redirect(w, r, "/", http.StatusFound)
 }

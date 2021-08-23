@@ -7,8 +7,8 @@
     <body class="tws-light-grey">
     <div class="tws-content" style="max-width: 1400px">
         <p>
-            <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="{{if .UData.IsLoggined}} /profile/ {{ else }} /login/ {{ end }}">
-                {{if .UData.IsLoggined}} PROFILE {{ else }} LOGIN {{ end }}
+            <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="{{if .UData.IsLoggined }} /profile/ {{ else }} /login/ {{ end }}">
+                {{ if .UData.IsLoggined }} PROFILE {{ else }} LOGIN {{ end }}
             </a>
         </p>
         <header class="tws-container tws-center tws-padding-32">
@@ -19,7 +19,9 @@
         </header>
 
         <p>
+            {{if eq .UData.AdminRight 1 }}
             <a class="tws-button tws-padding-large tws-white tws-border" href="/edit/{{.Title}}">EDIT</a>
+            {{ end }}
         </p>
     </div>
     </body>
