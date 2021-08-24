@@ -8,24 +8,29 @@ import (
 	"regexp"
 )
 
-var gUserData = UserData{}
+var gUserData = TwsUserData{}
 
 type Page struct {
 	Title string
-	Body []byte
-	UData UserData
-}
-
-type UserData struct {
-	Login string
-	FirstName string
-	LastName string
-	AvatarUrl string
-	IsLoggined bool
+	Body  []byte
+	UData TwsUserData
 }
 
 func (p *Page) save() error {
 	return SavePage(p.Title, p.Body)
+}
+
+type UserRight int
+const (
+	USER UserRight = iota
+	ADMIN
+)
+
+type TwsUserData struct {
+	UserID    string
+	AvatarUrl string
+	AdminRight UserRight
+	IsLoggined bool
 }
 
 func loadPage(title string) (*Page, error) {
