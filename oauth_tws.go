@@ -1,13 +1,11 @@
 package main
 
 import (
-	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -30,6 +28,7 @@ var conf = &oauth2.Config{
 		TokenURL: 	"https://github.com/login/oauth/access_token",
 	},
 }
+
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -82,7 +81,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
-func loadUserData(data []byte) {
+func loadUserData(dbConn iDB, data []byte) {
 	var userData githubUserData
 	json.Unmarshal(data, &userData)
 
@@ -92,50 +91,19 @@ func loadUserData(data []byte) {
 	gUserData.AvatarUrl = userData.AvatarUrl
 
 	if len(gUserData.UserID) != 0 {
-		syncedUserData, err := SyncUserWithDB(gUserData)
+		syncedUserData, err := dbConn.SyncUser(gUserData)
 		gUserData = syncedUserData
 		if err != nil {
 			log.Println(err)
-			gUserData.IsLoggined = false
+			gUserData.IsLogged = false
 			return
 		}
-		gUserData.IsLoggined = true
+		gUserData.IsLogged = true
 	}
-}
-
-func githubHandler(w http.ResponseWriter, r *http.Request, title string) {
-	ctx := context.Background()
-
-	code := r.FormValue("code")
-	stateCheck := r.FormValue("state")
-	if len(code) == 0 || stateCheck != randomStateString {
-		log.Println("Something wrong with authentication response :(")
-		http.Redirect(w, r, "/profile", http.StatusFound)
-		return
-	}
-	log.Printf("Received authorization code - %v", code)
-
-	tok, err := conf.Exchange(ctx, code)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Retrieved initial access token %v", tok)
-
-	client := conf.Client(ctx, tok)
-	resp, err := client.Get("https://api.github.com/user")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	respBody, err := ioutil.ReadAll(resp.Body)
-	loadUserData(respBody)
-
-	log.Printf("Received response with user data %v", string(respBody))
-	http.Redirect(w, r, "/profile", http.StatusFound)
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request, title string) {
-	if !gUserData.IsLoggined {
+	if !gUserData.IsLogged {
 		return
 	}
 
