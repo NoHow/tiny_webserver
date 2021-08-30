@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+type twsDB struct {
+	db *bolt.DB
+}
+
 type dbUserData struct {
 	AvatarUrl string
 	AdminRight UserRight
@@ -73,15 +77,9 @@ func InitDB() {
 	}
 }
 
-func GetPage(title string) ([]byte, error) {
-	db, err := bolt.Open("data/tws.db", 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
+func (db *twsDB) GetPage(title string) ([]byte, error) {
 	var resultData []byte
-	err = db.View(func(tx *bolt.Tx) error {
+	err := db.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("PagesData"))
 		getResult := b.Get([]byte(title))
 		resultData = append(resultData, getResult...)
@@ -91,34 +89,25 @@ func GetPage(title string) ([]byte, error) {
 	return resultData, err
 }
 
-func SavePage(title string, data []byte) error {
-	db, err := bolt.Open("data/tws.db", 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	return db.Update(func(tx *bolt.Tx) error {
+func (db *twsDB) SavePage(title string, data []byte) error {
+	return db.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte("PagesData"))
 		return bucket.Put([]byte(title), data)
 	})
 }
 
-//Add user if doesn't exists or update current database data
-func SyncUserWithDB(userData TwsUserData) (TwsUserData, error) {
-	db, err := bolt.Open("data/tws.db", 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
+// SyncUser Add user if doesn't exists or update current database data
+func (db *twsDB) SyncUser(userData TwsUserData) (TwsUserData, error) {
 	userResultData := userData
-	err = db.Update(func(tx *bolt.Tx) error {
+	err := db.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte("Users"))
 		var dbUser dbUserData
 		userDBData := bucket.Get([]byte(userData.UserID))
 		if userDBData != nil {
-			err = json.Unmarshal(userDBData, &dbUser)
+			err := json.Unmarshal(userDBData, &dbUser)
+			if err != nil {
+				return err
+			}
 			//Fields that we want to pull from the database
 			userResultData.AdminRight = dbUser.AdminRight
 		}
@@ -154,8 +143,7 @@ func setUserPrivilege(db *bolt.DB, userId []byte, userRight UserRight) error {
 
 		dbUser.AdminRight = userRight
 		user, err = json.Marshal(dbUser)
-		bucket.Put(userId, user)
-		return nil
+		return bucket.Put(userId, user)
 	})
 }
 

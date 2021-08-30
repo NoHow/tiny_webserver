@@ -1,12 +1,111 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"github.com/boltdb/bolt"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"regexp"
 )
+
+type iDB interface {
+	GetPage(title string) ([]byte, error)
+	SavePage(title string, data []byte) error
+	SyncUser(userData TwsUserData) (TwsUserData, error)
+}
+
+type environment struct {
+	db iDB
+}
+
+func (env *environment) getPageTitle(r *http.Request) (string, error) {
+	m := validPath.FindStringSubmatch(r.URL.Path)
+	if m == nil {
+		return "", fmt.Errorf("url path is not valid")
+	}
+
+	return m[2], nil
+}
+
+func (env *environment) viewHandler(w http.ResponseWriter, r *http.Request) {
+	pageTitle, err :=  env.getPageTitle(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pageData , err := env.db.GetPage(pageTitle)
+	if err != nil {
+		http.Redirect(w, r, "/edit/"+pageTitle, http.StatusFound)
+		return
+	}
+	renderTemplate(w, "view", &Page{
+		Title: pageTitle,
+		Body:  pageData,
+		UData: gUserData,
+	})
+}
+
+func (env *environment) editHandler(w http.ResponseWriter, r *http.Request) {
+	pageTitle, err :=  env.getPageTitle(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	page := &Page{Title: pageTitle, UData: gUserData}
+	renderTemplate(w, "edit", page)
+}
+
+func (env *environment) saveHandler(w http.ResponseWriter, r *http.Request) {
+	pageTitle, err :=  env.getPageTitle(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	body := r.FormValue("body")
+	p := &Page{Title: pageTitle, Body: []byte(body)}
+	err = p.save(env.db)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/view/"+pageTitle, http.StatusFound)
+}
+
+func (env *environment) githubHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
+	code := r.FormValue("code")
+	stateCheck := r.FormValue("state")
+	if len(code) == 0 || stateCheck != randomStateString {
+		log.Println("Something wrong with authentication response :(")
+		http.Redirect(w, r, "/profile", http.StatusFound)
+		return
+	}
+	log.Printf("Received authorization code - %v", code)
+
+	tok, err := conf.Exchange(ctx, code)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Retrieved initial access token %v", tok)
+
+	client := conf.Client(ctx, tok)
+	resp, err := client.Get("https://api.github.com/user")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	respBody, err := ioutil.ReadAll(resp.Body)
+	loadUserData(env.db, respBody)
+
+	log.Printf("Received response with user data %v", string(respBody))
+	http.Redirect(w, r, "/profile", http.StatusFound)
+}
 
 var gUserData = TwsUserData{}
 
@@ -16,8 +115,8 @@ type Page struct {
 	UData TwsUserData
 }
 
-func (p *Page) save() error {
-	return SavePage(p.Title, p.Body)
+func (p *Page) save(dbConn iDB) error {
+	return dbConn.SavePage(p.Title, p.Body)
 }
 
 type UserRight int
@@ -30,16 +129,16 @@ type TwsUserData struct {
 	UserID    string
 	AvatarUrl string
 	AdminRight UserRight
-	IsLoggined bool
+	IsLogged   bool
 }
 
-func loadPage(title string) (*Page, error) {
-	body, err := GetPage(title)
-	if err != nil {
-		return nil, err
-	}
-	return &Page{Title: title, Body: body, UData: gUserData}, nil
-}
+//func loadPage(title string) (*Page, error) {
+//	body, err := GetPage(title)
+//	if err != nil {
+//		return nil, err
+//	}
+//	return &Page{Title: title, Body: body, UData: gUserData}, nil
+//}
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	err := templates.ExecuteTemplate(w, tmpl+".html",p)
@@ -49,7 +148,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 }
 
 func profileHandler(w http.ResponseWriter, r *http.Request, title string) {
-	if !gUserData.IsLoggined {
+	if !gUserData.IsLogged {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -57,36 +156,6 @@ func profileHandler(w http.ResponseWriter, r *http.Request, title string) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
-	p, err := loadPage(title)
-	if err != nil {
-		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
-		return
-	}
-
-	renderTemplate(w, "view", p)
-}
-
-func editHandler(w http.ResponseWriter, r *http.Request, title string) {
-	p, err := loadPage(title)
-	if err != nil {
-		p = &Page{Title: title}
-	}
-
-	renderTemplate(w, "edit", p)
-}
-
-func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
-	body := r.FormValue("body")
-	p := &Page{Title: title, Body: []byte(body)}
-	err := p.save()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
 func cssHandler(w http.ResponseWriter, r *http.Request, title string) {
@@ -99,17 +168,11 @@ func cssHandler(w http.ResponseWriter, r *http.Request, title string) {
 
 	contentType := "text/css"
 	w.Header().Add("Content-Type", contentType)
-	w.Write(body)
-}
-
-func testHandler(w http.ResponseWriter, r *http.Request, title string) {
-	p, err := loadPage("testdata")
+	_, err = w.Write(body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	renderTemplate(w, "test", p)
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request, title string) {
@@ -129,21 +192,28 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
+
 var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html", "tmpl/test.html", "tmpl/profile.html"))
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
 func main() {
 	InitDB()
+	dbConnection, err := bolt.Open("data/tws.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	env := environment{
+		db: &twsDB{db: dbConnection},
+	}
 
 	http.HandleFunc("/profile/", makeHandler(profileHandler))
-	http.HandleFunc("/view/", makeHandler(viewHandler))
-	http.HandleFunc("/edit/", makeHandler(editHandler))
-	http.HandleFunc("/save/", makeHandler(saveHandler))
-	http.HandleFunc("/test/", makeHandler(testHandler))
+	http.HandleFunc("/view/", env.viewHandler)
+	http.HandleFunc("/edit/", env.editHandler)
+	http.HandleFunc("/save/", env.saveHandler)
+	http.HandleFunc("/github", env.githubHandler)
 	http.HandleFunc("/tmpl/css/", makeHandler(cssHandler))
 	http.HandleFunc("/login/", makeHandler(loginHandler))
 	http.HandleFunc("/logout/", makeHandler(logoutHandler))
-	http.HandleFunc("/github", makeHandler(githubHandler))
 	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
