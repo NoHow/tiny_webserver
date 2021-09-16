@@ -21,6 +21,13 @@ type dbUserData struct {
 }
 
 func InitDB() {
+	_, err := os.Stat("data")
+	if os.IsNotExist(err) {
+		err = os.Mkdir("data", 0700)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	db, err := bolt.Open("data/tws.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
