@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -19,20 +20,30 @@ type githubUserData struct {
 	AvatarUrl string `json:"avatar_url"`
 }
 
-var conf = &oauth2.Config{
-	ClientID: 		"",
-	ClientSecret: 	"",
-	Scopes:			[]string{"user"},
-	Endpoint: oauth2.Endpoint{
-		AuthURL:	"https://github.com/login/oauth/authorize",
-		TokenURL: 	"https://github.com/login/oauth/access_token",
-	},
+type iOauth interface {
+	Exchange(ctx context.Context, code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error)
+	Client(ctx context.Context, token *oauth2.Token) iHttpClient
+	AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string
 }
 
+type twsOauth struct {
+	config *oauth2.Config
+}
+
+func (oauth *twsOauth) Exchange(ctx context.Context, code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error) {
+	return oauth.config.Exchange(ctx, code, opts...)
+}
+
+func (oauth *twsOauth) 	AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string {
+	return oauth.config.AuthCodeURL(state, opts...)
+}
+
+func (oauth *twsOauth) Client(ctx context.Context, token *oauth2.Token) iHttpClient {
+	return oauth.config.Client(ctx, token)
+}
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	loadConfig()
 }
 
 type OauthData struct {
@@ -44,7 +55,7 @@ type SuperAdminStruct struct {
 	SuperAdminId string `yaml:"super_admin_id"`
 }
 
-func loadConfig()  {
+func loadOauthConfig() iOauth {
 	cfg, err := os.ReadFile("config/config.yml")
 	if err != nil {
 		log.Fatal(err)
@@ -56,8 +67,18 @@ func loadConfig()  {
 		log.Fatal(err)
 	}
 
-	conf.ClientID = oauth.Auth_github_cid
-	conf.ClientSecret = oauth.Auth_github_csec
+	//TODO: remove hardcoded scopes and URLs
+	return &twsOauth{
+		config: &oauth2.Config{
+			ClientID: oauth.Auth_github_cid,
+			ClientSecret: oauth.Auth_github_csec,
+			Scopes:			[]string{"user"},
+			Endpoint: oauth2.Endpoint{
+				AuthURL:	"https://github.com/login/oauth/authorize",
+				TokenURL: 	"https://github.com/login/oauth/access_token",
+			},
+		},
+	}
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -73,9 +94,9 @@ func randStringRunes(n int) string {
 
 var randomStateString string
 
-func loginHandler(w http.ResponseWriter, r *http.Request, title string) {
+func (env *environment) loginHandler(w http.ResponseWriter, r *http.Request) {
 	randomStateString = randStringRunes(32)
-	url := conf.AuthCodeURL(randomStateString)
+	url := env.oauth.AuthCodeURL(randomStateString)
 	log.Printf("Visit the URL for the auth dialog: %v", url)
 
 	http.Redirect(w, r, url, http.StatusFound)

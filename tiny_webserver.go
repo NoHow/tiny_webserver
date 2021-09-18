@@ -11,6 +11,10 @@ import (
 	"regexp"
 )
 
+type iHttpClient interface {
+	Get(url string) (resp *http.Response, err error)
+}
+
 type iDB interface {
 	GetPage(title string) ([]byte, error)
 	SavePage(title string, data []byte) error
@@ -19,6 +23,7 @@ type iDB interface {
 
 type environment struct {
 	db iDB
+	oauth iOauth
 }
 
 func (env *environment) getPageTitle(r *http.Request) (string, error) {
@@ -36,6 +41,7 @@ func (env *environment) viewHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	pageData , err := env.db.GetPage(pageTitle)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+pageTitle, http.StatusFound)
@@ -67,6 +73,7 @@ func (env *environment) saveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := r.FormValue("body")
+	log.Printf("Current body is - %v", body)
 	p := &Page{Title: pageTitle, Body: []byte(body)}
 	err = p.save(env.db)
 	if err != nil {
@@ -82,22 +89,26 @@ func (env *environment) githubHandler(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	stateCheck := r.FormValue("state")
 	if len(code) == 0 || stateCheck != randomStateString {
-		log.Println("Something wrong with authentication response :(")
-		http.Redirect(w, r, "/profile", http.StatusFound)
+		log.Printf("Something wrong with authentication response: code [%v], state [%v]", code, stateCheck)
+		http.Redirect(w, r, "/index", http.StatusFound)
 		return
 	}
 	log.Printf("Received authorization code - %v", code)
 
-	tok, err := conf.Exchange(ctx, code)
+	tok, err := env.oauth.Exchange(ctx, code)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf(err.Error())
+		http.Redirect(w, r, "/index", http.StatusFound)
+		return
 	}
 	log.Printf("Retrieved initial access token %v", tok)
 
-	client := conf.Client(ctx, tok)
+	client := env.oauth.Client(ctx, tok)
 	resp, err := client.Get("https://api.github.com/user")
 	if err != nil {
-		log.Fatal(err)
+		log.Printf(err.Error())
+		http.Redirect(w, r, "/index", http.StatusFound)
+		return
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -192,18 +203,19 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
-
 var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html", "tmpl/test.html", "tmpl/profile.html"))
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
 func main() {
 	InitDB()
 	dbConnection, err := bolt.Open("data/tws.db", 0600, nil)
+	defer dbConnection.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
 	env := environment{
 		db: &twsDB{db: dbConnection},
+		oauth: loadOauthConfig(),
 	}
 
 	http.HandleFunc("/profile/", makeHandler(profileHandler))
@@ -211,8 +223,8 @@ func main() {
 	http.HandleFunc("/edit/", env.editHandler)
 	http.HandleFunc("/save/", env.saveHandler)
 	http.HandleFunc("/github", env.githubHandler)
+	http.HandleFunc("/login/", env.loginHandler)
 	http.HandleFunc("/tmpl/css/", makeHandler(cssHandler))
-	http.HandleFunc("/login/", makeHandler(loginHandler))
 	http.HandleFunc("/logout/", makeHandler(logoutHandler))
 	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
