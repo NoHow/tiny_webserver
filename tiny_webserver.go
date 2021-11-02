@@ -207,6 +207,7 @@ var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.h
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
 func main() {
+	
 	InitDB()
 	dbConnection, err := bolt.Open("data/tws.db", 0600, nil)
 	defer dbConnection.Close()
