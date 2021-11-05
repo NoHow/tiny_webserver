@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"tinywebserver/utils"
 )
 
 type githubUserData struct {
@@ -81,21 +82,10 @@ func loadOauthConfig() iOauth {
 	}
 }
 
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-func randStringRunes(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Int63() % int64(len(letterBytes))]
-	}
-
-	return string(b)
-}
-
 var randomStateString string
 
 func (env *environment) loginHandler(w http.ResponseWriter, r *http.Request) {
-	randomStateString = randStringRunes(32)
+	randomStateString = utils.RandString(32)
 	url := env.oauth.AuthCodeURL(randomStateString)
 	log.Printf("Visit the URL for the auth dialog: %v", url)
 
