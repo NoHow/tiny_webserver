@@ -1,9 +1,17 @@
-module tiny_webserver
+module tinywebserver
 
-go 1.16
+go 1.17
 
 require (
-	github.com/boltdb/bolt v1.3.1 // indirect
-	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	github.com/boltdb/bolt v1.3.1
+	golang.org/x/oauth2 v0.0.0-20211028175245-ba495a64dcb5
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+)
+
+require (
+	github.com/golang/protobuf v1.4.2 // indirect
+	golang.org/x/net v0.0.0-20200822124328-c89045814202 // indirect
+	golang.org/x/sys v0.0.0-20200803210538-64077c9b5642 // indirect
+	google.golang.org/appengine v1.6.6 // indirect
+	google.golang.org/protobuf v1.25.0 // indirect
 )

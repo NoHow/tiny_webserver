@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -203,10 +203,11 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
-var templates = template.Must(template.ParseFiles("tmpl/edit.html", "tmpl/view.html", "tmpl/test.html", "tmpl/profile.html"))
+var templatesPath = "../tmpl/"
+var templates = template.Must(template.ParseFiles(templatesPath + "edit.html", templatesPath + "view.html", templatesPath + "test.html", templatesPath + "profile.html"))
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
-func main() {
+func Start() {
 	InitDB()
 	dbConnection, err := bolt.Open("data/tws.db", 0600, nil)
 	defer dbConnection.Close()
