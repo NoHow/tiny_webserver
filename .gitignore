@@ -29,5 +29,7 @@
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
 
+# Misc
 config/config.yml
 data/*
+.DS_Store
