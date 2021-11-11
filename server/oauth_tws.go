@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
 	"log"
@@ -92,7 +93,13 @@ func (env *environment) loginHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
-func loadUserData(dbConn iDB, data []byte) {
+func (env *environment) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	env.sessionManager.DestroySession(w, r)
+
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func loadUserData(dbConn iDB, data []byte) (TwsUserData, error) {
 	var userData githubUserData
 	json.Unmarshal(data, &userData)
 
@@ -103,21 +110,8 @@ func loadUserData(dbConn iDB, data []byte) {
 
 	if len(gUserData.UserID) != 0 {
 		syncedUserData, err := dbConn.SyncUser(gUserData)
-		gUserData = syncedUserData
-		if err != nil {
-			log.Println(err)
-			gUserData.IsLogged = false
-			return
-		}
-		gUserData.IsLogged = true
-	}
-}
-
-func logoutHandler(w http.ResponseWriter, r *http.Request, title string) {
-	if !gUserData.IsLogged {
-		return
+		return syncedUserData, err
 	}
 
-	gUserData = TwsUserData{}
-	http.Redirect(w, r, "/", http.StatusFound)
+	return TwsUserData{}, fmt.Errorf("couldn't generate User ID")
 }
