@@ -165,8 +165,6 @@ func (env *environment) profileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var gUserData = TwsUserData{}
-
 type Page struct {
 	Title string
 	Body  []byte

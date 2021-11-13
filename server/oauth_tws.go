@@ -105,11 +105,12 @@ func loadUserData(dbConn iDB, data []byte) (TwsUserData, error) {
 
 	sha1Client := sha1.New()
 	sha1Client.Write([]byte(userData.Login))
-	gUserData.UserID = hex.EncodeToString(sha1Client.Sum([]byte(userData.Email)))
-	gUserData.AvatarUrl = userData.AvatarUrl
+	var twsUserData TwsUserData
+	twsUserData.UserID = hex.EncodeToString(sha1Client.Sum([]byte(userData.Email)))
+	twsUserData.AvatarUrl = userData.AvatarUrl
 
-	if len(gUserData.UserID) != 0 {
-		syncedUserData, err := dbConn.SyncUser(gUserData)
+	if len(twsUserData.UserID) != 0 {
+		syncedUserData, err := dbConn.SyncUser(twsUserData)
 		return syncedUserData, err
 	}
 
