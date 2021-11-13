@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"tinywebserver/utils"
 )
 
 type githubUserData struct {
@@ -81,28 +83,23 @@ func loadOauthConfig() iOauth {
 	}
 }
 
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-func randStringRunes(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Int63() % int64(len(letterBytes))]
-	}
-
-	return string(b)
-}
-
 var randomStateString string
 
 func (env *environment) loginHandler(w http.ResponseWriter, r *http.Request) {
-	randomStateString = randStringRunes(32)
+	randomStateString = utils.RandString(32)
 	url := env.oauth.AuthCodeURL(randomStateString)
 	log.Printf("Visit the URL for the auth dialog: %v", url)
 
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
-func loadUserData(dbConn iDB, data []byte) {
+func (env *environment) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	env.sessionManager.DestroySession(w, r)
+
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func loadUserData(dbConn iDB, data []byte) (TwsUserData, error) {
 	var userData githubUserData
 	json.Unmarshal(data, &userData)
 
@@ -113,21 +110,8 @@ func loadUserData(dbConn iDB, data []byte) {
 
 	if len(gUserData.UserID) != 0 {
 		syncedUserData, err := dbConn.SyncUser(gUserData)
-		gUserData = syncedUserData
-		if err != nil {
-			log.Println(err)
-			gUserData.IsLogged = false
-			return
-		}
-		gUserData.IsLogged = true
-	}
-}
-
-func logoutHandler(w http.ResponseWriter, r *http.Request, title string) {
-	if !gUserData.IsLogged {
-		return
+		return syncedUserData, err
 	}
 
-	gUserData = TwsUserData{}
-	http.Redirect(w, r, "/", http.StatusFound)
+	return TwsUserData{}, fmt.Errorf("couldn't generate User ID")
 }

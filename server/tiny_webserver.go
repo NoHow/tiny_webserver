@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"tinywebserver/session"
 )
 
 type iHttpClient interface {
@@ -24,6 +25,15 @@ type iDB interface {
 type environment struct {
 	db iDB
 	oauth iOauth
+	sessionManager *session.Manager
+}
+
+func (env *environment) readUserData(r *http.Request) (userData TwsUserData, err error) {
+	session, err := env.sessionManager.ReadSession(r)
+	if err == nil {
+		userData.FillSessionData(session)
+	}
+	return
 }
 
 func (env *environment) getPageTitle(r *http.Request) (string, error) {
@@ -47,10 +57,18 @@ func (env *environment) viewHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/edit/"+pageTitle, http.StatusFound)
 		return
 	}
+
+	session, err := env.sessionManager.ReadSession(r)
+	userData := TwsUserData{}
+	if err != nil {
+		log.Printf(err.Error())
+	} else {
+		userData.FillSessionData(session)
+	}
 	renderTemplate(w, "view", &Page{
 		Title: pageTitle,
 		Body:  pageData,
-		UData: gUserData,
+		UData: userData,
 	})
 }
 
@@ -61,7 +79,11 @@ func (env *environment) editHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page := &Page{Title: pageTitle, UData: gUserData}
+	userData, err := env.readUserData(r)
+	if err != nil {
+		log.Printf(err.Error())
+	}
+	page := &Page{Title: pageTitle, UData: userData}
 	renderTemplate(w, "edit", page)
 }
 
@@ -112,10 +134,35 @@ func (env *environment) githubHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
-	loadUserData(env.db, respBody)
-
 	log.Printf("Received response with user data %v", string(respBody))
+	userData, err := loadUserData(env.db, respBody)
+	if err != nil {
+		log.Printf(err.Error())
+		http.Redirect(w, r, "/index", http.StatusFound)
+		return
+	}
+	session := env.sessionManager.StartSession(w, r)
+	log.Println("Kicked off session")
+	session.Set("userId", userData.UserID)
+	session.Set("avatarUrl", userData.AvatarUrl)
+	session.Set("adminRight", userData.AdminRight)
+
 	http.Redirect(w, r, "/profile", http.StatusFound)
+}
+
+func (env *environment) profileHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := env.sessionManager.ReadSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	var userData TwsUserData
+	userData.FillSessionData(session)
+	err = templates.ExecuteTemplate(w, "profile.html", userData)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 var gUserData = TwsUserData{}
@@ -143,6 +190,27 @@ type TwsUserData struct {
 	IsLogged   bool
 }
 
+func (userData *TwsUserData) FillSessionData(session session.Session) {
+	if session == nil {
+		return
+	}
+
+	ok := false
+	userData.UserID, ok = session.Get("userId").(string)
+	if !ok {
+		log.Printf("no userId information inside session")
+	}
+	userData.AvatarUrl, ok = session.Get("avatarUrl").(string)
+	if !ok {
+		log.Printf("no avatarUrl information inside session")
+	}
+	userData.AdminRight, _ = session.Get("adminRight").(UserRight)
+	if !ok {
+		log.Printf("no adminRight information inside session")
+	}
+	userData.IsLogged = true
+}
+
 //func loadPage(title string) (*Page, error) {
 //	body, err := GetPage(title)
 //	if err != nil {
@@ -153,17 +221,6 @@ type TwsUserData struct {
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	err := templates.ExecuteTemplate(w, tmpl+".html",p)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func profileHandler(w http.ResponseWriter, r *http.Request, title string) {
-	if !gUserData.IsLogged {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	err := templates.ExecuteTemplate(w, "profile.html", gUserData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -203,30 +260,44 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
-var templatesPath = "../tmpl/"
-var templates = template.Must(template.ParseFiles(templatesPath + "edit.html", templatesPath + "view.html", templatesPath + "test.html", templatesPath + "profile.html"))
+var templatesPath string
+var templates *template.Template
 var validPath = regexp.MustCompile("^/(edit|save|view|test|login)/([a-zA-Z0-9]+)$|[/]|^/(/tmpl/css)/([a-zA-Z0-9]+)")
 
+func init() {
+	templatesPath = "tmpl/"
+}
+
 func Start() {
+	//This cannot be located at start, because we want to overwrite templatesPath for tests
+	templates = template.Must(template.ParseFiles(templatesPath + "edit.html", templatesPath + "view.html", templatesPath + "test.html", templatesPath + "profile.html"))
+
 	InitDB()
 	dbConnection, err := bolt.Open("data/tws.db", 0600, nil)
 	defer dbConnection.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	sessionManager := session.NewManager("memory", "twssessionid", 3600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	sessionManager.StartGC()
 	env := environment{
 		db: &twsDB{db: dbConnection},
 		oauth: loadOauthConfig(),
+		sessionManager: sessionManager,
 	}
 
-	http.HandleFunc("/profile/", makeHandler(profileHandler))
+	http.HandleFunc("/profile/", env.profileHandler)
 	http.HandleFunc("/view/", env.viewHandler)
 	http.HandleFunc("/edit/", env.editHandler)
 	http.HandleFunc("/save/", env.saveHandler)
 	http.HandleFunc("/github", env.githubHandler)
 	http.HandleFunc("/login/", env.loginHandler)
+	http.HandleFunc("/logout/", env.logoutHandler)
 	http.HandleFunc("/tmpl/css/", makeHandler(cssHandler))
-	http.HandleFunc("/logout/", makeHandler(logoutHandler))
 	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

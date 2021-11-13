@@ -11,6 +11,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"tinywebserver/session"
+	"tinywebserver/utils"
+	"html/template"
 )
 
 type stubDB struct {
@@ -83,6 +86,11 @@ func checkIfRedirect(rec *httptest.ResponseRecorder, expectedRedirect string, t 
 	}
 }
 
+func init() {
+	templatesPath = "../tmpl/"
+	templates = template.Must(template.ParseFiles(templatesPath + "edit.html", templatesPath + "view.html", templatesPath + "test.html", templatesPath + "profile.html"))
+}
+
 func TestGetPageTitle(t *testing.T) {
 	env := environment{ db: &stubDB{} }
 
@@ -119,12 +127,15 @@ func TestGetPageTitle(t *testing.T) {
 func TestViewHandler(t *testing.T) {
 	testTitle := "testpage"
 	testBody := []byte("testbody")
-	env := environment{ db: &stubDB{
-		pageData: Page{
-			Title: testTitle,
-			Body: testBody,
-		},
-	} }
+	env := environment{
+		db: &stubDB{
+			pageData: Page{
+				Title: testTitle,
+				Body: testBody,
+			},
+	},
+		sessionManager: session.NewManager("memory", "twssessionid", 3600),
+	}
 
 	testCase := "/view/"
 	rec := httptest.NewRecorder()
@@ -164,12 +175,15 @@ func TestViewHandler(t *testing.T) {
 func TestEditHandler(t *testing.T) {
 	testTitle := "testpage"
 	testBody := []byte("testbody")
-	env := environment{ db: &stubDB{
-		pageData: Page{
-			Title: testTitle,
-			Body: testBody,
+	env := environment{
+		db: &stubDB{
+			pageData: Page{
+				Title: testTitle,
+				Body: testBody,
+			},
 		},
-	} }
+		sessionManager: session.NewManager("memory", "twssessionid", 3600),
+	}
 
 	rec := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/edit/" + testTitle, nil)
@@ -236,6 +250,7 @@ func TestSaveHandler(t *testing.T) {
 }
 
 func TestGithubHandler(t *testing.T) {
+	cookieName := "twstestcookie"
 	env := environment{
 		db: &stubDB{
 			pageData: Page{},
@@ -246,20 +261,25 @@ func TestGithubHandler(t *testing.T) {
 				errForGet: nil,
 			},
 		},
+		sessionManager: session.NewManager("memory", cookieName, 3600),
 	}
 
 	//Normal flow
 	rec := httptest.NewRecorder()
 	sampleAuthorizationCode := "bd3hkj23dl4ha61f24de87b75c"
-	randomStateString = randStringRunes(32)
+	randomStateString = utils.RandString(32)
 	req, _ := http.NewRequest(http.MethodGet, "/github?code=" + sampleAuthorizationCode + "&state=" + randomStateString, nil)
+	cookieValue := utils.RandString(32)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
 
 	http.HandlerFunc(env.githubHandler).ServeHTTP(rec, req)
 	checkIfRedirect(rec, "/profile", t)
 
 	expectedAvatarUrl := "testurl.com"
 	expectedIsLogged := true
-	actualUserData := gUserData
+	session, _ := env.sessionManager.ReadSession(req)
+	var actualUserData TwsUserData
+	actualUserData.FillSessionData(session)
 	if len(actualUserData.UserID) == 0 {
 		t.Errorf("Expected user ID to be non-empty")
 	}
@@ -290,7 +310,7 @@ func TestGithubHandler(t *testing.T) {
 	env.oauth = &stubOauth{
 		httpClientToCreate: &stubHttp{
 			dataForGet: "",
-			errForGet: fmt.Errorf("Failed to get user data"),
+			errForGet: fmt.Errorf("failed to get user data"),
 		},
 	}
 	rec4 := httptest.NewRecorder()

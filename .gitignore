@@ -33,3 +33,4 @@
 config/config.yml
 data/*
 .DS_Store
+tinywebserver
