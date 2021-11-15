@@ -14,6 +14,8 @@ type PersistenceProvider interface {
 	SessionRead(sid string) (Session, error)
 	SessionDestroy(sid string) error
 	SessionGC(maxLifetime int64)
+	SessionCount() int
+	SessionsCleanse()
 }
 
 type Session interface {
@@ -47,9 +49,6 @@ func (manager *Manager) StartSession(w http.ResponseWriter, r *http.Request) (se
 }
 
 func (manager *Manager) ReadSession(r *http.Request) (Session, error) {
-	manager.lock.Lock()
-	defer manager.lock.Unlock()
-
 	cookie, err := r.Cookie(manager.cookieName)
 	if err != nil || cookie.Value == "" {
 		return nil, err
@@ -89,6 +88,8 @@ func NewManager(providerName, cookieName string, maxLifetime int64) *Manager {
 	if !ok {
 		panic("couldn't find provider with provided name")
 	}
+	provider.SessionsCleanse()
+
 	return &Manager{ provider: provider, cookieName: cookieName, maxLifetime: maxLifetime}
 }
 

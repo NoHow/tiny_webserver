@@ -7,22 +7,25 @@ import (
 	"time"
 )
 
-var provider = &Provider{list: list.New()}
+type storageProvider interface {
+	SessionUpdate(sid string) error
+}
 
 type SessionStore struct {
 	sid 			string
 	timeAccessed 	time.Time
 	value 			map[interface{}]interface{}
+	provider 		storageProvider
 }
 
 func (st *SessionStore) Set(key, value interface{}) error {
 	st.value[key] = value
-	provider.SessionUpdate(st.sid)
+	st.provider.SessionUpdate(st.sid)
 	return nil
 }
 
 func (st *SessionStore) Get(key interface{}) interface{} {
-	provider.SessionUpdate(st.sid)
+	st.provider.SessionUpdate(st.sid)
 	if v, ok := st.value[key]; ok {
 		return v
 	}
@@ -32,7 +35,7 @@ func (st *SessionStore) Get(key interface{}) interface{} {
 
 func (st *SessionStore) Delete(key interface{}) error {
 	delete(st.value, key)
-	provider.SessionUpdate(st.sid)
+	st.provider.SessionUpdate(st.sid)
 	return nil
 }
 
@@ -55,6 +58,7 @@ func (pdr *Provider) SessionInit(sid string) (Session, error) {
 		sid: sid,
 		timeAccessed: time.Now(),
 		value: v,
+		provider: pdr,
 	}
 	element := pdr.list.PushBack(newSession)
 	pdr.sessions[sid] = element
@@ -114,6 +118,21 @@ func (pdr *Provider) SessionUpdate(sid string) error {
 	return nil
 }
 
+func (pdr *Provider) SessionCount() int {
+	return pdr.list.Len()
+}
+
+func (pdr *Provider) SessionsCleanse() {
+	for {
+		element := pdr.list.Back()
+		if element == nil {
+			break
+		}
+
+		pdr.SessionDestroy(element.Value.(*SessionStore).sid)
+	}
+}
+
 func (pdr *Provider) getOldestElementAndUTime() (*list.Element, int64) {
 	element := pdr.list.Back()
 	if element == nil {
@@ -124,6 +143,7 @@ func (pdr *Provider) getOldestElementAndUTime() (*list.Element, int64) {
 }
 
 func init() {
+	provider := &Provider{list: list.New()}
 	provider.sessions = make(map[string]*list.Element, 0)
 	Register("memory", provider)
 }
