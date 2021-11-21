@@ -12,3 +12,13 @@ func RandString(n int) string {
 
 	return string(b)
 }
+
+func FindString(slice []string, elemToFind string) (int, string) {
+	for i, v := range slice {
+		if v == elemToFind {
+			return i, v
+		}
+	}
+
+	return -1, ""
+}
