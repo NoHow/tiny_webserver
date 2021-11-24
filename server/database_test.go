@@ -65,9 +65,9 @@ func TestDeleteUserPost(t *testing.T) {
 	is.NoErr(err)
 	err = testDB.deleteUserPost([]byte(defaultTestUserData.UserID), postDate)
 	is.NoErr(err)
-	//actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, nil)
-	//is.NoErr(err)
-	//is.Equal(len(actualPosts), 0)
+	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, nil)
+	is.NoErr(err)
+	is.Equal(len(actualPosts), 0)
 }
 //
 //func TestLikeUserPost(t *testing.T) {
