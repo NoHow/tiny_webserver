@@ -43,30 +43,30 @@ func TestSavePost(t *testing.T) {
 	is.Equal(len(actualPosts), 1)
 	is.Equal(actualPosts[0].Text, testPost.Text)
 }
-//
-//func TestDeleteUserPost(t *testing.T) {
-//	is := is.New(t)
-//	db, err := bolt.Open("test_tws.db", 0600, nil)
-//	is.NoErr(err)
-//	defer db.Close()
-//	defer os.Remove("test_tws.db")
-//	testDB := twsDB{ db: db }
-//
-//	//Test successful delete scenario
-//	createBucketIfNotExistsOrDie([]byte("Users"), testDB.db)
-//	createBucketIfNotExistsOrDie([]byte("Posts"), testDB.db)
-//	_, err = testDB.SyncUser(defaultTestUserData)
-//	testPost := dbPost{
-//		Text:	"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim ID est laborum.",
-//	}
-//	postDate, err := testDB.savePost([]byte(defaultTestUserData.UserID), testPost)
-//	is.NoErr(err)
-//	err = testDB.deleteUserPost([]byte(defaultTestUserData.UserID), postDate)
-//	is.NoErr(err)
-//	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, nil)
-//	is.NoErr(err)
-//	is.Equal(len(actualPosts), 0)
-//}
+
+func TestDeleteUserPost(t *testing.T) {
+	is := is.New(t)
+	db, err := bolt.Open("test_tws.db", 0600, nil)
+	is.NoErr(err)
+	defer db.Close()
+	defer os.Remove("test_tws.db")
+	testDB := twsDB{ db: db }
+
+	//Test successful delete scenario
+	createBucketIfNotExistsOrDie([]byte("Users"), testDB.db)
+	createBucketIfNotExistsOrDie([]byte("Posts"), testDB.db)
+	_, err = testDB.SyncUser(defaultTestUserData)
+	testPost := dbPost{
+		Text:	"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim ID est laborum.",
+	}
+	postDate, err := testDB.savePost([]byte(defaultTestUserData.UserID), testPost)
+	is.NoErr(err)
+	err = testDB.deleteUserPost([]byte(defaultTestUserData.UserID), postDate)
+	is.NoErr(err)
+	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, nil)
+	is.NoErr(err)
+	is.Equal(len(actualPosts), 0)
+}
 //
 //func TestLikeUserPost(t *testing.T) {
 //	is := is.New(t)
