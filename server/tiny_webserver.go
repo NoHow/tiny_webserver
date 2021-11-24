@@ -9,8 +9,15 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"time"
 	"tinywebserver/session"
 )
+
+const twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
+
+func toTwsUTCTime(time time.Time) []byte {
+	return []byte(time.UTC().Format(twsTimeFormat))
+}
 
 type iHttpClient interface {
 	Get(url string) (resp *http.Response, err error)
@@ -232,7 +239,7 @@ func cssHandler(w http.ResponseWriter, r *http.Request, title string) {
 		return
 	}
 
-	contentType := "text/css"
+	contentType := "Text/css"
 	w.Header().Add("Content-Type", contentType)
 	_, err = w.Write(body)
 	if err != nil {
