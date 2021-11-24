@@ -61,10 +61,10 @@ func TestDeleteUserPost(t *testing.T) {
 		Text:	"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim ID est laborum.",
 	}
 	fmt.Println(testPost)
-	//postDate, err := testDB.savePost([]byte(defaultTestUserData.UserID), testPost)
-	//is.NoErr(err)
-	//err = testDB.deleteUserPost([]byte(defaultTestUserData.UserID), postDate)
-	//is.NoErr(err)
+	postDate, err := testDB.savePost([]byte(defaultTestUserData.UserID), testPost)
+	is.NoErr(err)
+	err = testDB.deleteUserPost([]byte(defaultTestUserData.UserID), postDate)
+	is.NoErr(err)
 	//actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, nil)
 	//is.NoErr(err)
 	//is.Equal(len(actualPosts), 0)
