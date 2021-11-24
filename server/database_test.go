@@ -21,21 +21,28 @@ var defaultTestUserData = TwsUserData{
 var testDBFolder = "test_databases"
 var dbGeneratorLock = sync.Mutex{}
 var dbFilesCounter = 0
+var testsReferenceCounter = 0
 
-func generateTestDB(is *is.I) (*bolt.DB, func()) {
+func generateTestDB(is *is.I, t *testing.T) *bolt.DB {
 	dbGeneratorLock.Lock()
 	err := os.Mkdir(testDBFolder, 0700)
 	if err != nil && !os.IsExist(err){
 		log.Fatalln(err)
+	} else if os.IsExist(err) {
+		log.Println("Folder already exists!")
+	} else {
+		log.Println("Created test folder!")
 	}
 	testDBName := testDBFolder + "/test_tws" +  strconv.Itoa(dbFilesCounter) + ".db"
 	dbFilesCounter++
+	testsReferenceCounter++
 	defer dbGeneratorLock.Unlock()
 
 	db, err := bolt.Open(testDBName, 0600, nil)
 	is.NoErr(err)
-	
-	return db, func() {
+
+	t.Cleanup(func() {
+		log.Printf("Clean up for %s started", testDBName)
 		err := db.Close()
 		if err != nil {
 			log.Fatalln(err)
@@ -46,22 +53,24 @@ func generateTestDB(is *is.I) (*bolt.DB, func()) {
 		}
 
 		dbGeneratorLock.Lock()
-		dbFilesCounter--
-		if dbFilesCounter == 0 {
+		testsReferenceCounter--
+		if testsReferenceCounter == 0 {
+			log.Println("Removed test folder!")
 			err := os.Remove(testDBFolder)
 			if err != nil {
 				log.Fatalln(err)
 			}
 		}
 		dbGeneratorLock.Unlock()
-	}
+	})
+
+	return db
 }
 
 func TestSavePost(t *testing.T) {
 	t.Parallel()
 	is := is.New(t)
-	db, cleanUp := generateTestDB(is)
-	defer cleanUp()
+	db := generateTestDB(is, t)
 	testDB := twsDB{ db: db }
 
 	//Test users bucket doesn't exist scenario
@@ -87,8 +96,7 @@ func TestSavePost(t *testing.T) {
 func TestDeleteUserPost(t *testing.T) {
 	t.Parallel()
 	is := is.New(t)
-	db, cleanUp := generateTestDB(is)
-	defer cleanUp()
+	db := generateTestDB(is,t )
 	testDB := twsDB{ db: db }
 
 	//Test successful delete scenario
@@ -110,8 +118,7 @@ func TestDeleteUserPost(t *testing.T) {
 func TestLikeUserPost(t *testing.T) {
 	t.Parallel()
 	is := is.New(t)
-	db, cleanUp := generateTestDB(is)
-	defer cleanUp()
+	db := generateTestDB(is,t )
 	testDB := twsDB{ db: db }
 
 	//Test successful like and unlike scenario
