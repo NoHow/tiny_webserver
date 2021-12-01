@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"golang.org/x/oauth2"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"testing"
 	"tinywebserver/session"
 	"tinywebserver/utils"
-	"html/template"
 )
 
 type stubDB struct {
@@ -36,6 +36,22 @@ func (db *stubDB) SavePage(title string, data []byte) error {
 	}
 	db.pageData.Title = title
 	db.pageData.Body = data
+	return nil
+}
+
+func (db *stubDB) getLatestUserPosts(ownerID []byte, maxPostsToGet int, lastKey int) (posts []dbPost, err error) {
+	return nil, nil
+}
+
+func (db *stubDB) saveUserPost(ownerID []byte, post string) (postID int, err error) {
+	return 0, nil
+}
+
+func (db *stubDB) deleteUserPost(ownerID []byte, postID int) error {
+	return nil
+}
+
+func (db *stubDB) toggleLikeOnUserPost(ownerID []byte, postID int, likeOwner string) error {
 	return nil
 }
 

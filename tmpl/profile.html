@@ -6,21 +6,51 @@
     </head>
     <body class="tws-light-grey">
     <div class="tws-content" style="max-width: 1400px">
+        <a class="tws-button tws-padding-large tws-white tws-border tws-left" href="/compose_post/">
+            <b>Post</b>
+        </a>
         <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="/">
             Main page
         </a>
         <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="/logout/">
             LOG OUT
         </a>
-        <header class="tws-container tws-center tws-padding-32">
-            <div class="tws-center">
-                <h1>
-                    <b>Profile Page</b>
-                </h1>
+        <div class="tws-content-main">
+            <header class="tws-container tws-center tws-padding-32">
+                <div class="tws-center">
+                    <h1>
+                        <b>Profile Page</b>
+                    </h1>
+                </div>
+                <p>Hello, user with the user id {{.UserData.UserID}}!</p>
+                <img class="tws-avatar medium" src="{{.UserData.AvatarUrl}}" alt="User avatar">
+            </header>
+
+            {{range .Posts}}
+            <div class="tws-card tws-margin tws-container">
+                <div class="tws-col d1">
+                    <img class="tws-avatar fit" src="{{ .OwnerAvatar }}" alt="User avatar">
+                </div>
+                <div class="tws-col d9">
+                    <div class="tws-post">
+                        <div class="tws-post-header-line" >
+                            <p class="tws-bold tws-lineshare" style="margin: 0px;">{{ .OwnerName }} </p>
+                            <a class="tws-lineshare tws-right" href="/delete_post/?postID={{ .PostID }}">
+                                <img src="../img/icons/cross-small.png" class="tws-icon-small">
+                            </a>
+                        </div>
+                        <p class="tws-post-text">{{ .Text }}</p>
+                        <div class="tws-post-bottom-line" >
+                            <a class="tws-col tws-icon" href="/like_post/?postID={{ .PostID }}&postOwnerID={{ .OwnerId }}">
+                                <img src="../img/icons/heart.png" class="tws-icon-small tws-lineshare">
+                                <p class="tws-lineshare">{{ len .Likes }}</p>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <p>Hello, user with the user id {{.UserID}}!</p>
-            <img src="{{.AvatarUrl}}" alt="User avatar">
-        </header>
+            {{end}}
+        </div>
     </div>
     </body>
 </html>

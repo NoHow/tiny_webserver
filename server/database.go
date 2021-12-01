@@ -20,13 +20,19 @@ type twsDB struct {
 type dbUserData struct {
 	AvatarUrl string
 	AdminRight UserRight
+	PostsIDs []int
 }
 
 type dbPost struct {
+	postId 			int		 `json:"-"`
 	Text  			string
 	Likes        	[]string
-	creationDate 	time.Time	`json:"-"`	//Must be specified in twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
+	CreationDate 	[]byte	//Must be specified in twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
 }
+
+const (
+	cUserID = "userID"
+)
 
 func createBucketIfNotExistsOrDie(bucketName []byte, db *bolt.DB) {
 	err := db.Update(func(tx *bolt.Tx) error {
@@ -58,6 +64,7 @@ func InitDB() {
 
 	listUsers 	:= flag.Bool("listUsers", false, "Shall we list all of the current users")
 	wipeUsers 	:= flag.Bool("wipeUsers", false, "Will wipe all user data")
+	wipePosts	:= flag.Bool("wipePosts", false, "Will wipe all user posts")
 	setAdmin 	:= flag.String("setAdmin", "", "Will set user with desired UserID as Admin")
 	setUser		:= flag.String("putOnEarth", "", "Set user rights back to the common peasant")
 	flag.Parse()
@@ -73,7 +80,21 @@ func InitDB() {
 		text = strings.Replace(text, "\n", "",-1)
 		text = strings.ToLower(text)
 		if strings.Compare(text, "yes") == 0 || strings.Compare(text, "y") == 0 {
-			wipeAllUsers(db)
+			wipeBucket(db, []byte("Users"))
+		} else {
+			fmt.Println("Please type <yes> or <y> if you want to clean user database!")
+		}
+		os.Exit(0)
+	}
+	if *wipePosts {
+		fmt.Println("Are you sure you want to DELETE ALL Posts? (Yes or y)")
+		reader := bufio.NewReader(os.Stdin)
+		text, _ := reader.ReadString('\n')
+		text = strings.Replace(text, "\r\n", "",-1)
+		text = strings.Replace(text, "\n", "",-1)
+		text = strings.ToLower(text)
+		if strings.Compare(text, "yes") == 0 || strings.Compare(text, "y") == 0 {
+			wipeBucket(db, []byte("Posts"))
 		} else {
 			fmt.Println("Please type <yes> or <y> if you want to clean user database!")
 		}
@@ -100,7 +121,8 @@ func (db *twsDB) getPostsBucket(tx *bolt.Tx, ownerID []byte, shouldCreate bool) 
 	if shouldCreate {
 		newUserBucket, err := mainBucket.CreateBucket(ownerID)
 		if err != nil {
-			return nil, fmt.Errorf("wasn't able to create new user posts bucket")
+			log.Printf("wasn't able to create bucket for user %s\n", ownerID)
+			return nil, err
 		}
 		return newUserBucket, nil
 	}
@@ -127,45 +149,102 @@ func (db *twsDB) SavePage(title string, data []byte) error {
 	})
 }
 
-func (db *twsDB) savePost(ownerID []byte, post dbPost) (saveTime []byte, err error)  {
+func appendPostToUser(tx *bolt.Tx, ownerID []byte, postID int) error {
+	appendFunc := func(user *dbUserData) {
+		user.PostsIDs = append(user.PostsIDs, postID)
+	}
+	return updateUser(tx, ownerID, appendFunc)
+}
+
+func removePostFromUser(tx *bolt.Tx, ownerID[]byte, postID int) error {
+	removeFunc := func(user *dbUserData) {
+		i, _ := utils.FindInt(user.PostsIDs, postID)
+		if i >= 0 {
+			//TODO: Quite possible place for a bottleneck, might need rethinking in the future
+			user.PostsIDs = append(user.PostsIDs[:i], user.PostsIDs[i+1:]...)
+		}
+	}
+	return updateUser(tx, ownerID, removeFunc)
+}
+
+func updateUser(tx *bolt.Tx, ownerID []byte, updateFunc func(user *dbUserData)) error {
+	usersBucket := tx.Bucket([]byte("Users"))
+	if usersBucket == nil {
+		return fmt.Errorf("users bucket doesn't exists")
+	}
+	userBuf := usersBucket.Get(ownerID)
+	if userBuf == nil {
+		return fmt.Errorf("user with the owner id of %s doesn't exist", ownerID)
+	}
+	user := &dbUserData{}
+	err	:= json.Unmarshal(userBuf, user)
+	if err != nil {
+		return err
+	}
+	updateFunc(user)
+	userBuf, err = json.Marshal(user)
+	if err != nil {
+		return err
+	}
+
+	//Update posts and users buckets
+	return usersBucket.Put(ownerID, userBuf)
+}
+
+func (db *twsDB) saveUserPost(ownerID []byte, postText string) (postID int, err error)  {
+	log.Println("saveUserPost()")
+	if len(postText) == 0 {
+		return 0, fmt.Errorf("post text is empty\n")
+	}
 	err = db.db.Update(func(tx *bolt.Tx) error {
-		mainBucket := tx.Bucket([]byte("Posts"))
-		if mainBucket == nil {
+		//Prepare post for Posts bucket
+		postsBucket := tx.Bucket([]byte("Posts"))
+		if postsBucket == nil {
 			return fmt.Errorf("posts bucket doesn't exists")
 		}
-		postsBucket := mainBucket.Bucket(ownerID)
-		if postsBucket == nil {
-			log.Printf("bucket with posts of user %s doesn't exists", ownerID)
-			newUserBucket, err := mainBucket.CreateBucket(ownerID)
-			if err != nil {
-				return fmt.Errorf("wasn't able to create new user posts bucket")
-			}
-			postsBucket = newUserBucket
-		}
-
-		saveTime = toTwsUTCTime(time.Now())
-		postJson, err := json.Marshal(post)
+		id, err := postsBucket.NextSequence()
 		if err != nil {
 			return err
 		}
-		return postsBucket.Put([]byte(saveTime), postJson)
+		postID = int(id)
+		post := dbPost{
+			Text: postText,
+			CreationDate: toTwsUTCTime(time.Now()),
+		}
+		buf, err := json.Marshal(post)
+		if err != nil {
+			return err
+		}
+
+		//Add association with the owner of the post
+		err = appendPostToUser(tx, ownerID, postID)
+		if err != nil {
+			return err
+		}
+
+		return postsBucket.Put(utils.Itob(postID), buf)
 	})
+
+	if err != nil {
+		postID = 0
+	}
 	return
 }
 
-func (db *twsDB) likeUserPost(ownerID []byte, postDate []byte, likeOwner string) error {
+func (db *twsDB) toggleLikeOnUserPost(ownerID []byte, postID int, likeOwner string) error {
 	return db.db.Update(func(tx *bolt.Tx) error {
-		bucket, err := db.getPostsBucket(tx, ownerID, false)
-		if err != nil {
-			return err
+		postsBucket := tx.Bucket([]byte("Posts"))
+		if postsBucket == nil {
+			return fmt.Errorf("posts bucket doesn't exists")
 		}
 
-		postJson := bucket.Get(postDate)
-		if postJson == nil {
-			return fmt.Errorf("post of user %s with id of [%s], which was attempted to like by %s was not found", ownerID, postDate, likeOwner)
+		postIDb := utils.Itob(postID)
+		buf := postsBucket.Get(postIDb)
+		if buf == nil {
+			return fmt.Errorf("post of user %s with id of [%v], which was attempted to like by %s was not found", ownerID, postID, likeOwner)
 		}
 		post := &dbPost{}
-		err = json.Unmarshal(postJson, post)
+		err := json.Unmarshal(buf, post)
 		if err != nil {
 			return err
 		}
@@ -179,79 +258,91 @@ func (db *twsDB) likeUserPost(ownerID []byte, postDate []byte, likeOwner string)
 			post.Likes = append(post.Likes, likeOwner)
 		}
 
-		postJson, err = json.Marshal(post)
+		buf, err = json.Marshal(post)
 		if err != nil {
 			return err
 		}
-		return bucket.Put(postDate, postJson)
+		return postsBucket.Put(postIDb, buf)
 	})
 }
 
-func (db *twsDB) deleteUserPost(ownerID []byte, postDate []byte) error {
+func (db *twsDB) deleteUserPost(ownerID []byte, postID int) error {
+	log.Printf("twsDB::deleteUserPost ownerId - %s, postID - %v", ownerID, postID)
 	return db.db.Update(func(tx *bolt.Tx) error {
-		mainBucket := tx.Bucket([]byte("Posts"))
-		if mainBucket == nil {
+		postsBucket := tx.Bucket([]byte("Posts"))
+		if postsBucket == nil {
 			return fmt.Errorf("posts bucket doesn't exists")
 		}
-		postsBucket := mainBucket.Bucket(ownerID)
-		if postsBucket == nil {
-			return fmt.Errorf("bucket with posts of user %s doesn't exists", ownerID)
+		err := postsBucket.Delete(utils.Itob(postID))
+		if err != nil {
+			return err
 		}
 
-		return postsBucket.Delete(postDate)
+		err = removePostFromUser(tx, ownerID, postID)
+		return err
 	})
 }
 
-func (db *twsDB) getLatestUserPosts(ownerID []byte, maxPostsToGet int, lastKey *time.Time) (posts []dbPost, err error) {
+func (db *twsDB) getLatestUserPosts(ownerID []byte, maxPostsToGet int, lastKey int) (posts []dbPost, err error) {
 	err = db.db.View(func(tx *bolt.Tx) error {
-		mainBucket := tx.Bucket([]byte("Posts"))
-		if mainBucket == nil {
-			log.Fatalf("posts bucket doesn't exists!")
+		usersBucket := tx.Bucket([]byte("Users"))
+		if usersBucket == nil {
+			return fmt.Errorf("users bucket doesn't exists\n")
+		}
+		userBuf := usersBucket.Get(ownerID)
+		if userBuf == nil {
+			return fmt.Errorf("user with id %s doesn't exists", ownerID)
+		}
+		user := &dbUserData{}
+		err = json.Unmarshal(userBuf, user)
+		if err != nil {
+			return err
 		}
 
-		postsBucket := mainBucket.Bucket(ownerID)
+		postsBucket := tx.Bucket([]byte("Posts"))
 		if postsBucket == nil {
-			return fmt.Errorf("bucket with posts of user %s doesn't exists", ownerID)
+			return fmt.Errorf("posts bucket doesn't exists\n")
 		}
-		c := postsBucket.Cursor()
-		var max, k, v []byte
-		if lastKey != nil {
-			max = []byte(lastKey.UTC().Format(twsTimeFormat))
-			k, v = c.Seek(max)
-		} else {
-			k, v = c.Last()
+
+		i := len(user.PostsIDs) - 1
+		if lastKey > 0 {
+			i, _ = utils.FindInt(user.PostsIDs, lastKey)
+			if i < 0 {
+				return fmt.Errorf("sorry, current id doesn't exist")
+			}
 		}
-		for ; k != nil && len(posts) < maxPostsToGet; k, v = c.Prev() {
-			if v == nil {
-				return fmt.Errorf("found post key without value, key - %s", k)
+		for postCount := 0; i >= 0 && postCount < maxPostsToGet; i-- {
+			postId := user.PostsIDs[i]
+			val := postsBucket.Get(utils.Itob(postId))
+			if val == nil {
+				log.Printf("post id [%v] is missing from posts bucket!", postId)
+				continue
 			}
 			post := &dbPost{}
-			err := json.Unmarshal(v, post)
+			err := json.Unmarshal(val, post)
 			if err != nil {
 				return err
 			}
-			creationDate, err := time.Parse(twsTimeFormat, string(k))
-			if err != nil {
-				return err
-			}
-			post.creationDate = creationDate
+			post.postId = postId
 			posts = append(posts, *post)
+			postCount++
 		}
 
 		return nil
 	})
 
+	log.Printf("tws::getLatestUserPosts() result - %+v\n", posts)
 	return posts, err
 }
 
-func (db *twsDB) getUserPost(ownerID []byte, key []byte) (post dbPost, err error) {
+func (db *twsDB) getUserPost(postID int) (post dbPost, err error) {
 	err = db.db.View(func(tx *bolt.Tx) error {
-		bucket, err := db.getPostsBucket(tx, ownerID, false)
-		if err != nil {
-			return err
+		postsBucket := tx.Bucket([]byte("Posts"))
+		if postsBucket == nil {
+			return fmt.Errorf("posts bucket doesn't exist")
 		}
 
-		postJson := bucket.Get(key)
+		postJson := postsBucket.Get(utils.Itob(postID))
 		err = json.Unmarshal(postJson, &post)
 		if err != nil {
 			return err
@@ -290,6 +381,7 @@ func (db *twsDB) SyncUser(userData TwsUserData) (TwsUserData, error) {
 		return TwsUserData{}, err
 	}
 
+	log.Printf("twsDB::SyncUser() result %+v\n", userResultData)
 	return userResultData, nil
 }
 
@@ -333,9 +425,9 @@ func listAllUsers(db *bolt.DB) error {
 	})
 }
 
-func wipeAllUsers(db *bolt.DB) error {
+func wipeBucket(db *bolt.DB, bucketName []byte) error {
 	err := db.Update(func(tx *bolt.Tx) error {
-		err := tx.DeleteBucket([]byte("Users"))
+		err := tx.DeleteBucket(bucketName)
 		if err != nil {
 			log.Fatal(err)
 		}
