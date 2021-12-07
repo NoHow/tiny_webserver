@@ -1,6 +1,9 @@
 package utils
 
-import "math/rand"
+import (
+	"encoding/binary"
+	"math/rand"
+)
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -21,4 +24,20 @@ func FindString(slice []string, elemToFind string) (int, string) {
 	}
 
 	return -1, ""
+}
+
+func FindInt(s []int, elemToFind int) (int, int) {
+	for i, v := range s {
+		if v == elemToFind {
+			return i, v
+		}
+	}
+
+	return -1, 0
+}
+
+func Itob(v int) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(v))
+	return b
 }

@@ -6,17 +6,41 @@
     margin-left: auto;
     margin-right: auto;
 }
+
+.tws-content-main {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 700px;
+}
+
 .tws-padding-32 {
     padding-top: 32px !important;
     padding-bottom: 32px !important;
 }
+
+.tws-post {
+    margin-left: 8px;
+}
+
+.tws-post-header-line {
+    padding: 2px;
+}
+
+.tws-post-bottom-line {
+    margin-top: 16px;
+}
+
+.tws-post-text {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
 .tws-center {
     text-align: center !important;
 }
 .tws-container, .tws-panel {
-    padding: 0.01em 16px;
-    padding-top: 0.01em;
-    padding-bottom: 0.01em;
+    padding: 10px;
+    overflow: auto;
 }
 .tws-white, .tws-hover-white:hover {
     color: #000 !important;
@@ -45,3 +69,89 @@
 .tws-right {
     float: right !important;
 }
+
+.tws-left {
+    float: left !important;
+}
+
+.tws-avatar {
+    border-radius: 100%;
+}
+
+.tws-avatar.fit {
+    max-width: 100%;
+}
+
+.tws-avatar.medium {
+    width: 210px;
+}
+
+.tws-avatar.small {
+    border-radius: 100%;
+    width: 80px;
+}
+
+.tws-card {
+    box-shadow: 0 4px 10px 0 rgba(0,0,0,0.2),0 4px 20px 0 rgba(0,0,0,0.19);
+}
+
+.tws-margin {
+    margin: 16px !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: "Segoe UI",Arial,sans-serif;
+    font-weight: 400;
+}
+
+.tws-col {
+    float: left;
+}
+
+.tws-col.m11 {
+    width: 91.66%;
+}
+
+.tws-col.m10 {
+    width: 83.33%;
+}
+
+.tws-col.m2 {
+    width: 16.66%;
+}
+
+.tws-col.m1 {
+    width: 8.33%;
+}
+
+.tws-col.d1 {
+    width: 10%;
+}
+
+.tws-col.d9 {
+    width: 90%;
+}
+
+.tws-bold {
+    font-weight: 900;
+}
+
+.tws-icon-small {
+    height: 20px;
+    width: 20px;
+    display: block;
+}
+
+.tws-icon {
+    text-decoration: none; /* no underline */
+    color: inherit;
+}
+
+.tws-lineshare {
+    display: inline-block;
+}
+
+p {
+    margin: 2px;
+}
+
