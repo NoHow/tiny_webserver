@@ -12,7 +12,7 @@ import (
 )
 
 var defaultTestUserData = TwsUserData{
-	UserID:     utils.RandString(16),
+	Id:         utils.RandString(16),
 	AvatarUrl:  "testAvatarUrl.com",
 	AdminRight: 0,
 	IsLogged:   false,
@@ -68,7 +68,7 @@ func TestSavePost(t *testing.T) {
 	testDB := twsDB{ db: db }
 
 	//Test users bucket doesn't exist scenario
-	_, err := testDB.saveUserPost([]byte(defaultTestUserData.UserID), "")
+	_, err := testDB.saveUserPost([]byte(defaultTestUserData.Id), "")
 	is.True(err != nil)
 
 	//Test successful save scenario
@@ -79,9 +79,9 @@ func TestSavePost(t *testing.T) {
 	testPost := dbPost{
 		Text:         "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim ID est laborum.",
 	}
-	_, err = testDB.saveUserPost([]byte(defaultTestUserData.UserID), testPost.Text)
+	_, err = testDB.saveUserPost([]byte(defaultTestUserData.Id), testPost.Text)
 	is.NoErr(err)
-	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, 0)
+	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.Id), 20, 0)
 	is.NoErr(err)
 	is.Equal(len(actualPosts), 1)
 	is.Equal(actualPosts[0].Text, testPost.Text)
@@ -100,11 +100,11 @@ func TestDeleteUserPost(t *testing.T) {
 	testPost := dbPost{
 		Text:	"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim ID est laborum.",
 	}
-	postID, err := testDB.saveUserPost([]byte(defaultTestUserData.UserID), testPost.Text)
+	postID, err := testDB.saveUserPost([]byte(defaultTestUserData.Id), testPost.Text)
 	is.NoErr(err)
-	err = testDB.deleteUserPost([]byte(defaultTestUserData.UserID), postID)
+	err = testDB.deleteUserPost([]byte(defaultTestUserData.Id), postID)
 	is.NoErr(err)
-	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.UserID), 20, 0)
+	actualPosts, err := testDB.getLatestUserPosts([]byte(defaultTestUserData.Id), 20, 0)
 	is.NoErr(err)
 	is.Equal(len(actualPosts), 0)
 }
@@ -122,7 +122,7 @@ func TestLikeUserPost(t *testing.T) {
 	testPost := dbPost{
 		Text:	"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim ID est laborum.",
 	}
-	defaultUserID := []byte(defaultTestUserData.UserID)
+	defaultUserID := []byte(defaultTestUserData.Id)
 	postID, err := testDB.saveUserPost(defaultUserID, testPost.Text)
 	is.NoErr(err)
 

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 	"tinywebserver/session"
 )
@@ -30,17 +31,19 @@ type iDB interface {
 	GetPage(title string) ([]byte, error)
 	SavePage(title string, data []byte) error
 	SyncUser(userData TwsUserData) (TwsUserData, error)
+	getUser(userId string) (dbUserData, error)
+	getUserPost(postID int) (post dbPost, err error)
 	getLatestUserPosts(ownerID []byte, maxPostsToGet int, lastKey int) (posts []dbPost, err error)
 	saveUserPost(ownerID []byte, post string) (postID int, err error)
-    deleteUserPost(ownerID []byte, postID int) error
+	deleteUserPost(ownerID []byte, postID int) error
 	toggleLikeOnUserPost(ownerID []byte, postID int, likeOwner string) error
 }
 
 type environment struct {
-	db iDB
-	oauth iOauth
+	db             iDB
+	oauth          iOauth
 	sessionManager *session.Manager
-	sanitizer *bluemonday.Policy
+	sanitizer      *bluemonday.Policy
 }
 
 func (env *environment) readUserData(r *http.Request) (userData TwsUserData, err error) {
@@ -51,23 +54,24 @@ func (env *environment) readUserData(r *http.Request) (userData TwsUserData, err
 	return
 }
 
-func (env *environment) getPageTitle(r *http.Request) (string, error) {
-	m := validPath.FindStringSubmatch(r.URL.Path)
+func getPathValue(r *http.Request, pathCheck *regexp.Regexp) (string, error) {
+	m := pathCheck.FindStringSubmatch(r.URL.Path)
 	if m == nil {
 		return "", fmt.Errorf("url path is not valid")
 	}
 
+	log.Printf("getPathValue will return %v", m[2])
 	return m[2], nil
 }
 
 func (env *environment) viewHandler(w http.ResponseWriter, r *http.Request) {
-	pageTitle, err :=  env.getPageTitle(r)
+	pageTitle, err := getPathValue(r, validPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	pageData , err := env.db.GetPage(pageTitle)
+	pageData, err := env.db.GetPage(pageTitle)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+pageTitle, http.StatusFound)
 		return
@@ -88,7 +92,7 @@ func (env *environment) viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (env *environment) editHandler(w http.ResponseWriter, r *http.Request) {
-	pageTitle, err :=  env.getPageTitle(r)
+	pageTitle, err := getPathValue(r, validPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -103,7 +107,7 @@ func (env *environment) editHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (env *environment) saveHandler(w http.ResponseWriter, r *http.Request) {
-	pageTitle, err :=  env.getPageTitle(r)
+	pageTitle, err := getPathValue(r, validPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -158,7 +162,7 @@ func (env *environment) githubHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	session := env.sessionManager.StartSession(w, r)
 	log.Println("Kicked off session")
-	session.Set("userId", userData.UserID)
+	session.Set("userId", userData.Id)
 	session.Set("avatarUrl", userData.AvatarUrl)
 	session.Set("adminRight", userData.AdminRight)
 
@@ -171,12 +175,37 @@ func (env *environment) profileHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	var postsPage ProfilePage
+	postsPage.SessionOwnerData.FillSessionData(session)
 
-	var postsPage PostsPage
-	postsPage.UserData.FillSessionData(session)
-	posts, err := env.db.getLatestUserPosts([]byte(postsPage.UserData.UserID), 20, 0)
+	postsPage.ProfileOwnerData.Id = postsPage.SessionOwnerData.Id
+	postsPage.ProfileOwnerData.AvatarUrl = postsPage.SessionOwnerData.AvatarUrl
+
+	pathCheck := regexp.MustCompile("^/(profile)/([a-zA-Z0-9]*)$")
+	userID, err := getPathValue(r, pathCheck)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(userID) > 0 {
+		user, err := env.db.getUser(userID)
+		if err == nil {
+			postsPage.ProfileOwnerData.Id = userID
+			postsPage.ProfileOwnerData.AvatarUrl = user.AvatarUrl
+		} else {
+			log.Println(err)
+		}
+	}
+
+	//TODO: Implement additional loading for posts
+	posts, err := env.db.getLatestUserPosts([]byte(postsPage.ProfileOwnerData.Id), 64, 0)
 	for _, p := range posts {
-		post := &twsPost{OwnerName: postsPage.UserData.UserID, OwnerAvatar: postsPage.UserData.AvatarUrl, OwnerId: postsPage.UserData.UserID}
+		post := &twsPost{
+			OwnerName:   postsPage.ProfileOwnerData.Id,
+			OwnerAvatar: postsPage.ProfileOwnerData.AvatarUrl,
+			OwnerId:     postsPage.ProfileOwnerData.Id,
+		}
 		err = post.convertFromDBPost(&p)
 		if err != nil {
 			log.Println(err)
@@ -196,7 +225,7 @@ func (env *environment) profileHandler(w http.ResponseWriter, r *http.Request) {
 
 func (env *environment) composePostHandler(w http.ResponseWriter, r *http.Request) {
 	userData, err := env.readUserData(r)
-	if err != nil || len(userData.UserID) == 0 {
+	if err != nil || len(userData.Id) == 0 {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -221,7 +250,7 @@ func (env *environment) savePostHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	postTextClean := env.sanitizer.Sanitize(postTextRaw)
-	_, err = env.db.saveUserPost([]byte(userData.UserID), postTextClean)
+	_, err = env.db.saveUserPost([]byte(userData.Id), postTextClean)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -233,7 +262,7 @@ func (env *environment) deletePostHandler(w http.ResponseWriter, r *http.Request
 	userData, err := env.readUserData(r)
 	if err != nil {
 		//TODO: What should we do here?
-		http.Redirect(w, r, "/", http.StatusFound)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -243,15 +272,27 @@ func (env *environment) deletePostHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	postIDBuf, ok := values["postID"]
-	log.Printf("localId received = %s\n", postIDBuf)
+	log.Printf("postID received = %s\n", postIDBuf)
 	if !ok || len(postIDBuf) == 0 {
-		http.Redirect(w, r, "/", http.StatusBadRequest)
+		http.Error(w, "postID is not valid", http.StatusBadRequest)
+		return
 	}
 	postID, err := strconv.Atoi(postIDBuf[0])
 	if err != nil {
-		http.Redirect(w, r, "/", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	err = env.db.deleteUserPost([]byte(userData.UserID), postID)
+	post, err := env.db.getUserPost(postID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if strings.Compare(string(post.OwnerId), userData.Id) != 0 {
+		//TODO: Make access denied window?
+		http.Error(w, "only the owner of post can delete it", http.StatusForbidden)
+		return
+	}
+	err = env.db.deleteUserPost([]byte(userData.Id), postID)
 	if err != nil {
 		log.Println(err)
 	}
@@ -286,13 +327,13 @@ func (env *environment) likePostHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusBadRequest)
 	}
-	err = env.db.toggleLikeOnUserPost([]byte(postOwnerIDBuf[0]), postID, userData.UserID)
+	err = env.db.toggleLikeOnUserPost([]byte(postOwnerIDBuf[0]), postID, userData.Id)
 	if err != nil {
 		log.Println(err)
 	}
 
 	//TODO: Redirect is funky, should be replaced with something
-	http.Redirect(w, r, "/profile", http.StatusFound)
+	http.Redirect(w, r, "/profile/"+postOwnerIDBuf[0], http.StatusFound)
 }
 
 type Page struct {
@@ -302,29 +343,30 @@ type Page struct {
 }
 
 type twsPost struct {
-	PostID			int
-	Text  			string
-	Likes        	[]string
-	CreationDate 	string
-	OwnerId 		string
-	OwnerName		string
-	OwnerAvatar		string
+	PostId       int
+	Text         string
+	Likes        []string
+	CreationDate string
+	OwnerId      string
+	OwnerName    string
+	OwnerAvatar  string
 }
 
 func (dest *twsPost) convertFromDBPost(src *dbPost) error {
 	if src == nil {
 		return fmt.Errorf("received empty post")
 	}
-	dest.Text 			= src.Text
-	dest.Likes 			= src.Likes
-	dest.CreationDate 	= string(src.CreationDate)
-	dest.PostID 		= src.postId
+	dest.Text = src.Text
+	dest.Likes = src.Likes
+	dest.CreationDate = string(src.CreationDate)
+	dest.PostId = src.postId
 	return nil
 }
 
-type PostsPage struct {
-	Posts    []twsPost
-	UserData TwsUserData
+type ProfilePage struct {
+	SessionOwnerData TwsUserData
+	Posts            []twsPost
+	ProfileOwnerData TwsUserData
 }
 
 func (p *Page) save(dbConn iDB) error {
@@ -332,14 +374,15 @@ func (p *Page) save(dbConn iDB) error {
 }
 
 type UserRight int
+
 const (
 	USER UserRight = iota
 	ADMIN
 )
 
 type TwsUserData struct {
-	UserID    string
-	AvatarUrl string
+	Id         string
+	AvatarUrl  string
 	AdminRight UserRight
 	IsLogged   bool
 }
@@ -350,7 +393,7 @@ func (userData *TwsUserData) FillSessionData(session session.Session) {
 	}
 
 	ok := false
-	userData.UserID, ok = session.Get("userId").(string)
+	userData.Id, ok = session.Get("userId").(string)
 	if !ok {
 		log.Printf("no userId information inside session")
 	}
@@ -367,16 +410,8 @@ func (userData *TwsUserData) FillSessionData(session session.Session) {
 	log.Printf("Current session data - %+v", userData)
 }
 
-//func loadPage(title string) (*Page, error) {
-//	body, err := GetPage(title)
-//	if err != nil {
-//		return nil, err
-//	}
-//	return &Page{Title: title, Body: body, UData: gUserData}, nil
-//}
-
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	err := templates.ExecuteTemplate(w, tmpl+".html",p)
+	err := templates.ExecuteTemplate(w, tmpl+".html", p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -393,7 +428,7 @@ func iconHandler(w http.ResponseWriter, r *http.Request, title string) {
 func fileHandler(w http.ResponseWriter, r *http.Request, title string, contentType string) {
 	filename := r.URL.Path[len("/"):]
 	body, err := ioutil.ReadFile(filename)
-	if err != nil{
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -434,8 +469,8 @@ func init() {
 
 func Start() {
 	//This cannot be located at start, because we want to overwrite templatesPath for tests
-	templates = template.Must(template.ParseFiles(templatesPath + "edit.html", templatesPath + "view.html", templatesPath + "test.html", templatesPath + "profile.html",
-		templatesPath + "compose_post.html"))
+	templates = template.Must(template.ParseFiles(templatesPath+"edit.html", templatesPath+"view.html", templatesPath+"test.html", templatesPath+"profile.html",
+		templatesPath+"compose_post.html"))
 
 	InitDB()
 	dbConnection, err := bolt.Open("data/tws.db", 0600, nil)
@@ -450,10 +485,10 @@ func Start() {
 	}
 	sessionManager.StartGC()
 	env := environment{
-		db: &twsDB{db: dbConnection},
-		oauth: loadOauthConfig(),
+		db:             &twsDB{db: dbConnection},
+		oauth:          loadOauthConfig(),
 		sessionManager: sessionManager,
-		sanitizer: bluemonday.StrictPolicy(),
+		sanitizer:      bluemonday.StrictPolicy(),
 	}
 
 	http.HandleFunc("/profile/", env.profileHandler)

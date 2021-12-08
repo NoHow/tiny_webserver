@@ -28,10 +28,19 @@ type dbPost struct {
 	Text  			string
 	Likes        	[]string
 	CreationDate 	[]byte	//Must be specified in twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
+	OwnerId			[]byte
 }
 
 const (
-	cUserID = "userID"
+	cUsersBucket 	= "Users"
+	cPostsBucket 	= "Posts"
+	cUserID 		= "userID"
+)
+
+const (
+	cUsersBucketNotExistError 	= cUsersBucket + " bucket doesn't exist"
+	cUserNotExistError 			= "user doesn't exist"
+	cPostsBucketNotExistError 	= cPostsBucket + " bucket doesn't exist"
 )
 
 func createBucketIfNotExistsOrDie(bucketName []byte, db *bolt.DB) {
@@ -65,7 +74,7 @@ func InitDB() {
 	listUsers 	:= flag.Bool("listUsers", false, "Shall we list all of the current users")
 	wipeUsers 	:= flag.Bool("wipeUsers", false, "Will wipe all user data")
 	wipePosts	:= flag.Bool("wipePosts", false, "Will wipe all user posts")
-	setAdmin 	:= flag.String("setAdmin", "", "Will set user with desired UserID as Admin")
+	setAdmin 	:= flag.String("setAdmin", "", "Will set user with desired Id as Admin")
 	setUser		:= flag.String("putOnEarth", "", "Set user rights back to the common peasant")
 	flag.Parse()
 	if *listUsers {
@@ -108,27 +117,9 @@ func InitDB() {
 	}
 }
 
-func (db *twsDB) getPostsBucket(tx *bolt.Tx, ownerID []byte, shouldCreate bool) (*bolt.Bucket, error) {
-	mainBucket := tx.Bucket([]byte("Posts"))
-	if mainBucket == nil {
-		return nil, fmt.Errorf("posts bucket doesn't exists")
-	}
-	postsBucket := mainBucket.Bucket(ownerID)
-	if postsBucket != nil {
-		return postsBucket, nil
-	}
-
-	if shouldCreate {
-		newUserBucket, err := mainBucket.CreateBucket(ownerID)
-		if err != nil {
-			log.Printf("wasn't able to create bucket for user %s\n", ownerID)
-			return nil, err
-		}
-		return newUserBucket, nil
-	}
-	return nil, fmt.Errorf("bucket for user %v doesn't exist", ownerID)
+func getBucket(tx *bolt.Tx, bucketName string) *bolt.Bucket {
+	return tx.Bucket([]byte(bucketName))
 }
-
 
 func (db *twsDB) GetPage(title string) ([]byte, error) {
 	var resultData []byte
@@ -210,6 +201,7 @@ func (db *twsDB) saveUserPost(ownerID []byte, postText string) (postID int, err 
 		post := dbPost{
 			Text: postText,
 			CreationDate: toTwsUTCTime(time.Now()),
+			OwnerId: ownerID,
 		}
 		buf, err := json.Marshal(post)
 		if err != nil {
@@ -331,7 +323,7 @@ func (db *twsDB) getLatestUserPosts(ownerID []byte, maxPostsToGet int, lastKey i
 		return nil
 	})
 
-	log.Printf("tws::getLatestUserPosts() result - %+v\n", posts)
+	log.Printf("tws::getLatestUserPosts() input ownerID - %s, maxPostsToGet - %v\nresult - %+v\n", ownerID, maxPostsToGet, posts)
 	return posts, err
 }
 
@@ -352,6 +344,24 @@ func (db *twsDB) getUserPost(postID int) (post dbPost, err error) {
 	return
 }
 
+func (db *twsDB) getUser(userId string) (dbUser dbUserData, err error) {
+	if len(userId) == 0 {
+		return dbUserData{}, fmt.Errorf("userId is empty")
+	}
+	err = db.db.View(func(tx *bolt.Tx) error {
+		bucket := getBucket(tx, cUsersBucket)
+		if bucket == nil {
+			return fmt.Errorf(cUsersBucketNotExistError)
+		}
+		buf := bucket.Get([]byte(userId))
+		if buf == nil {
+			return fmt.Errorf(cUserNotExistError)
+		}
+		return json.Unmarshal(buf, &dbUser)
+	})
+	log.Printf("twsDB::getUser() will return %+v", dbUser)
+	return
+}
 
 // SyncUser Add user if doesn't exists or update current database data
 func (db *twsDB) SyncUser(userData TwsUserData) (TwsUserData, error) {
@@ -359,7 +369,7 @@ func (db *twsDB) SyncUser(userData TwsUserData) (TwsUserData, error) {
 	err := db.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte("Users"))
 		var dbUser dbUserData
-		userDBData := bucket.Get([]byte(userData.UserID))
+		userDBData := bucket.Get([]byte(userData.Id))
 		if userDBData != nil {
 			err := json.Unmarshal(userDBData, &dbUser)
 			if err != nil {
@@ -375,7 +385,7 @@ func (db *twsDB) SyncUser(userData TwsUserData) (TwsUserData, error) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		return bucket.Put([]byte(userData.UserID), dbByteData)
+		return bucket.Put([]byte(userData.Id), dbByteData)
 	})
 	if err != nil {
 		return TwsUserData{}, err
@@ -390,7 +400,7 @@ func setUserPrivilege(db *bolt.DB, userId []byte, userRight UserRight) error {
 		bucket := tx.Bucket([]byte("Users"))
 		user := bucket.Get(userId)
 		if user == nil {
-			return fmt.Errorf("Coudn't find user with UserID %v\n", userId)
+			return fmt.Errorf("Coudn't find user with Id %v\n", userId)
 		}
 
 		var dbUser dbUserData
