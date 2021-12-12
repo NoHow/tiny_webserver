@@ -59,16 +59,24 @@ func (db *stubDB) SyncUser(userData TwsUserData) (TwsUserData, error) {
 	return userData, nil
 }
 
+func (db *stubDB) getUser(userId string) (dbUserData, error) {
+	return dbUserData{}, nil
+}
+
+func (db *stubDB) getUserPost(postID int) (post dbPost, err error) {
+	return
+}
+
 type stubHttp struct {
 	dataForGet string
-	errForGet error
+	errForGet  error
 }
 
 func (client *stubHttp) Get(url string) (resp *http.Response, err error) {
-	return &http.Response{Body: ioutil.NopCloser(strings.NewReader(client.dataForGet)) }, client.errForGet
+	return &http.Response{Body: ioutil.NopCloser(strings.NewReader(client.dataForGet))}, client.errForGet
 }
 
-type stubOauth struct{
+type stubOauth struct {
 	ExchangeStubMethod func(ctx context.Context, code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error)
 
 	httpClientToCreate iHttpClient
@@ -104,18 +112,16 @@ func checkIfRedirect(rec *httptest.ResponseRecorder, expectedRedirect string, t 
 
 func init() {
 	templatesPath = "../tmpl/"
-	templates = template.Must(template.ParseFiles(templatesPath + "edit.html", templatesPath + "view.html", templatesPath + "test.html", templatesPath + "profile.html"))
+	templates = template.Must(template.ParseFiles(templatesPath+"edit.html", templatesPath+"view.html", templatesPath+"test.html", templatesPath+"profile.html"))
 }
 
 func TestGetPageTitle(t *testing.T) {
-	env := environment{ db: &stubDB{} }
-
-	expectedTitles := []string{ "title1", "", "123ljkjads"}
+	expectedTitles := []string{"title1", "", "123ljkjads"}
 	testCases := []string{"/view/", "/edit/", "/save/"}
 	for index, testCase := range testCases {
 		title := expectedTitles[index]
-		req := httptest.NewRequest(http.MethodGet, testCase + title, nil)
-		resultTitle, err := env.getPageTitle(req)
+		req := httptest.NewRequest(http.MethodGet, testCase+title, nil)
+		resultTitle, err := getPathValue(req, validPath)
 		if err != nil {
 			t.Errorf("Boom")
 		}
@@ -125,13 +131,13 @@ func TestGetPageTitle(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/invalidparent/title_to_die", nil)
-	resultTitle, err := env.getPageTitle(req)
+	resultTitle, err := getPathValue(req, validPath)
 	if len(resultTitle) > 0 {
 		t.Errorf("Expected empty title, got %v", resultTitle)
 	}
 
 	req.URL.Path = "invalidPath"
-	resultTitle, err = env.getPageTitle(req)
+	resultTitle, err = getPathValue(req, validPath)
 	if err == nil {
 		t.Errorf("Expected error to be non nil")
 	}
@@ -147,15 +153,15 @@ func TestViewHandler(t *testing.T) {
 		db: &stubDB{
 			pageData: Page{
 				Title: testTitle,
-				Body: testBody,
+				Body:  testBody,
 			},
-	},
+		},
 		sessionManager: session.NewManager("memory", "twssessionid", 3600),
 	}
 
 	testCase := "/view/"
 	rec := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, testCase + testTitle, nil)
+	req, _ := http.NewRequest(http.MethodGet, testCase+testTitle, nil)
 
 	http.HandlerFunc(env.viewHandler).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -166,16 +172,16 @@ func TestViewHandler(t *testing.T) {
 	}
 
 	rec2 := httptest.NewRecorder()
-	emptyEnv := environment{ db: &stubDB{} }
+	emptyEnv := environment{db: &stubDB{}}
 
 	req.URL.Path = "/view/nopage"
-	http.NewRequest(http.MethodGet, testCase + testTitle, nil)
+	http.NewRequest(http.MethodGet, testCase+testTitle, nil)
 	http.HandlerFunc(emptyEnv.viewHandler).ServeHTTP(rec2, req)
 	if rec2.Code != http.StatusFound {
 		t.Errorf("Expected %v, got %v", http.StatusFound, rec2.Code)
 	}
 	expectedRedirect := "/edit/nopage"
-	redirect :=	rec2.Header().Get("Location")
+	redirect := rec2.Header().Get("Location")
 	if redirect != expectedRedirect {
 		t.Errorf("Expected %s, got %s", expectedRedirect, redirect)
 	}
@@ -195,14 +201,14 @@ func TestEditHandler(t *testing.T) {
 		db: &stubDB{
 			pageData: Page{
 				Title: testTitle,
-				Body: testBody,
+				Body:  testBody,
 			},
 		},
 		sessionManager: session.NewManager("memory", "twssessionid", 3600),
 	}
 
 	rec := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/edit/" + testTitle, nil)
+	req, _ := http.NewRequest(http.MethodGet, "/edit/"+testTitle, nil)
 
 	http.HandlerFunc(env.editHandler).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -224,14 +230,14 @@ func TestEditHandler(t *testing.T) {
 func TestSaveHandler(t *testing.T) {
 	testTitle := "testPage"
 	testBody := "testBody"
-	env := environment{ db: &stubDB{
+	env := environment{db: &stubDB{
 		pageData: Page{},
 	}}
 
 	//Normal flow
 	rec := httptest.NewRecorder()
 	r := strings.NewReader("body=" + testBody)
-	req, _ := http.NewRequest(http.MethodPost, "/save/" + testTitle, r)
+	req, _ := http.NewRequest(http.MethodPost, "/save/"+testTitle, r)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	http.HandlerFunc(env.saveHandler).ServeHTTP(rec, req)
@@ -239,7 +245,7 @@ func TestSaveHandler(t *testing.T) {
 		t.Errorf("Expected %v, got %v", http.StatusFound, rec.Code)
 	}
 	expectedRedirect := "/view/" + testTitle
-	redirect :=	rec.Header().Get("Location")
+	redirect := rec.Header().Get("Location")
 	if redirect != expectedRedirect {
 		t.Errorf("Expected %s, got %s", expectedRedirect, redirect)
 	}
@@ -257,7 +263,7 @@ func TestSaveHandler(t *testing.T) {
 	}
 
 	//Database couldn't save data flow
-	reqErr, _ := http.NewRequest(http.MethodPost, "/save/" + "error", r)
+	reqErr, _ := http.NewRequest(http.MethodPost, "/save/"+"error", r)
 	rec3 := httptest.NewRecorder()
 	http.HandlerFunc(env.saveHandler).ServeHTTP(rec3, reqErr)
 	if rec3.Code != http.StatusInternalServerError {
@@ -274,7 +280,7 @@ func TestGithubHandler(t *testing.T) {
 		oauth: &stubOauth{
 			httpClientToCreate: &stubHttp{
 				dataForGet: "{ \"login\" : \"testLogin\", \"email\" : \"testLogin@test.com\", \"avatar_url\" : \"testurl.com\" }",
-				errForGet: nil,
+				errForGet:  nil,
 			},
 		},
 		sessionManager: session.NewManager("memory", cookieName, 3600),
@@ -284,7 +290,7 @@ func TestGithubHandler(t *testing.T) {
 	rec := httptest.NewRecorder()
 	sampleAuthorizationCode := "bd3hkj23dl4ha61f24de87b75c"
 	randomStateString = utils.RandString(32)
-	req, _ := http.NewRequest(http.MethodGet, "/github?code=" + sampleAuthorizationCode + "&state=" + randomStateString, nil)
+	req, _ := http.NewRequest(http.MethodGet, "/github?code="+sampleAuthorizationCode+"&state="+randomStateString, nil)
 	cookieValue := utils.RandString(32)
 	req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
 
@@ -296,7 +302,7 @@ func TestGithubHandler(t *testing.T) {
 	session, _ := env.sessionManager.ReadSession(req)
 	var actualUserData TwsUserData
 	actualUserData.FillSessionData(session)
-	if len(actualUserData.UserID) == 0 {
+	if len(actualUserData.Id) == 0 {
 		t.Errorf("Expected user ID to be non-empty")
 	}
 	if actualUserData.AvatarUrl != expectedAvatarUrl || actualUserData.IsLogged != expectedIsLogged {
@@ -306,7 +312,7 @@ func TestGithubHandler(t *testing.T) {
 
 	//Broken code or state
 	rec2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest(http.MethodGet, "/github?code=" + "&state=" + randomStateString, nil)
+	req2, _ := http.NewRequest(http.MethodGet, "/github?code="+"&state="+randomStateString, nil)
 	http.HandlerFunc(env.githubHandler).ServeHTTP(rec2, req2)
 	checkIfRedirect(rec2, "/index", t)
 
@@ -318,7 +324,7 @@ func TestGithubHandler(t *testing.T) {
 		},
 	}
 	rec3 := httptest.NewRecorder()
-	req3, _ := http.NewRequest(http.MethodGet, "/github?code=" + sampleAuthorizationCode + "&state=" + randomStateString, nil)
+	req3, _ := http.NewRequest(http.MethodGet, "/github?code="+sampleAuthorizationCode+"&state="+randomStateString, nil)
 	http.HandlerFunc(env.githubHandler).ServeHTTP(rec3, req3)
 	checkIfRedirect(rec3, "/index", t)
 
@@ -326,11 +332,11 @@ func TestGithubHandler(t *testing.T) {
 	env.oauth = &stubOauth{
 		httpClientToCreate: &stubHttp{
 			dataForGet: "",
-			errForGet: fmt.Errorf("failed to get user data"),
+			errForGet:  fmt.Errorf("failed to get user data"),
 		},
 	}
 	rec4 := httptest.NewRecorder()
-	req4, _ := http.NewRequest(http.MethodGet, "/github?code=" + sampleAuthorizationCode + "&state=" + randomStateString, nil)
+	req4, _ := http.NewRequest(http.MethodGet, "/github?code="+sampleAuthorizationCode+"&state="+randomStateString, nil)
 	http.HandlerFunc(env.githubHandler).ServeHTTP(rec4, req4)
 	checkIfRedirect(rec3, "/index", t)
 }
