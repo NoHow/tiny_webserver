@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"tinywebserver/session"
+	"tinywebserver/utils"
 )
 
 const twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
@@ -33,10 +34,12 @@ type iDB interface {
 	SyncUser(userData TwsUserData) (TwsUserData, error)
 	getUser(userId string) (dbUserData, error)
 	getUserPost(postID int) (post dbPost, err error)
+	getUserPosts(postsId []int) ([]dbPost, error)
 	getLatestUserPosts(ownerID []byte, maxPostsToGet int, lastKey int) (posts []dbPost, err error)
 	saveUserPost(ownerID []byte, post string) (postID int, err error)
 	deleteUserPost(ownerID []byte, postID int) error
 	toggleLikeOnUserPost(ownerID []byte, postID int, likeOwner string) error
+	repostUserPost(postToRepostId []byte, reposterId []byte, reposterText string) (resultPostId int, err error)
 }
 
 type environment struct {
@@ -62,6 +65,31 @@ func getPathValue(r *http.Request, pathCheck *regexp.Regexp) (string, error) {
 
 	log.Printf("getPathValue will return %v", m[2])
 	return m[2], nil
+}
+
+func tryToGetPostIdFromUrl(w http.ResponseWriter, r *http.Request, require bool) (int, error) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return -1, err
+	}
+	postIDBuf, ok := values["postID"]
+	log.Printf("postID received = %s\n", postIDBuf)
+	if !ok {
+		if require {
+			http.Error(w, "postID wasn't provided", http.StatusBadRequest)
+			return -1, fmt.Errorf("postID wasn't provided")
+		} else {
+			return -1, nil
+		}
+	}
+	postID, err := strconv.Atoi(postIDBuf[0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return -1, err
+	}
+
+	return postID, nil
 }
 
 func (env *environment) viewHandler(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +197,12 @@ func (env *environment) githubHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/profile", http.StatusFound)
 }
 
+type ProfilePage struct {
+	SessionOwnerData TwsUserData
+	Posts            []twsPost
+	ProfileOwnerData TwsUserData
+}
+
 func (env *environment) profileHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := env.sessionManager.ReadSession(r)
 	if err != nil {
@@ -201,26 +235,38 @@ func (env *environment) profileHandler(w http.ResponseWriter, r *http.Request) {
 	//TODO: Implement additional loading for posts
 	posts, err := env.db.getLatestUserPosts([]byte(postsPage.ProfileOwnerData.Id), 64, 0)
 	for _, p := range posts {
+		//Get user data for the standard posts
 		post := &twsPost{
 			OwnerName:   postsPage.ProfileOwnerData.Id,
 			OwnerAvatar: postsPage.ProfileOwnerData.AvatarUrl,
 			OwnerId:     postsPage.ProfileOwnerData.Id,
 		}
+		post.Type = figureOutDbPostType(&p)
 		err = post.convertFromDBPost(&p)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
+		if post.Type != PostType_Post {
+			repostedPost := &twsPost{}
+			err = repostedPost.constructUserPost(env.db, p.RepostId)
+			if err != nil {
+				log.Println(err)
+			}
+			post.Repost = repostedPost
+		}
 		postsPage.Posts = append(postsPage.Posts, *post)
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	err = templates.ExecuteTemplate(w, "profile.html", postsPage)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+type ComposePostPageData struct {
+	SessionOwnerData TwsUserData
+	Post             twsPost
 }
 
 func (env *environment) composePostHandler(w http.ResponseWriter, r *http.Request) {
@@ -230,10 +276,29 @@ func (env *environment) composePostHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	postId, err := tryToGetPostIdFromUrl(w, r, false)
 	if err != nil {
-		log.Printf(err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	renderTemplate(w, "compose_post", &Page{UData: userData})
+	post := twsPost{}
+	if postId > 0 {
+		err = post.constructUserPost(env.db, postId)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	log.Printf("environment::composePostHandler will execute with post data %+v", post)
+	err = templates.ExecuteTemplate(w, "compose_post.html", &ComposePostPageData{
+		SessionOwnerData: userData,
+		Post:             post,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (env *environment) savePostHandler(w http.ResponseWriter, r *http.Request) {
@@ -245,12 +310,39 @@ func (env *environment) savePostHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	postTextRaw := r.FormValue("body")
-	if len(postTextRaw) > 240 || len(postTextRaw) == 0 {
+	if len(postTextRaw) > 240 {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 	postTextClean := env.sanitizer.Sanitize(postTextRaw)
-	_, err = env.db.saveUserPost([]byte(userData.Id), postTextClean)
+
+	postForRepostId, err := tryToGetPostIdFromUrl(w, r, false)
+	log.Printf("environment::savePostHandler tryToGetPostIdFromUrl return -> %v", postForRepostId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if postForRepostId > 0 {
+		postForRepost := twsPost{}
+		err := postForRepost.constructUserPost(env.db, postForRepostId)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		//Currently, we don't support reposts of any kind of other quotes
+		if postForRepost.Type == PostType_Quote {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		_, err = env.db.repostUserPost(utils.Itob(postForRepostId), []byte(userData.Id), postTextClean)
+	} else {
+		if len(postTextClean) == 0 {
+			http.Error(w, "/", http.StatusBadRequest)
+			return
+		}
+		_, err = env.db.saveUserPost([]byte(userData.Id), postTextClean)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -265,19 +357,7 @@ func (env *environment) deletePostHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	values, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	postIDBuf, ok := values["postID"]
-	log.Printf("postID received = %s\n", postIDBuf)
-	if !ok || len(postIDBuf) == 0 {
-		http.Error(w, "postID is not valid", http.StatusBadRequest)
-		return
-	}
-	postID, err := strconv.Atoi(postIDBuf[0])
+	postID, err := tryToGetPostIdFromUrl(w, r, true)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -287,7 +367,7 @@ func (env *environment) deletePostHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if strings.Compare(string(post.OwnerId), userData.Id) != 0 {
+	if strings.Compare(string(post.CreatorId), userData.Id) != 0 {
 		//TODO: Make access denied window?
 		http.Error(w, "only the owner of post can delete it", http.StatusForbidden)
 		return
@@ -308,32 +388,53 @@ func (env *environment) likePostHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	postId, err := tryToGetPostIdFromUrl(w, r, true)
+	post, err := env.db.getUserPost(postId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = env.db.toggleLikeOnUserPost(post.CreatorId, postId, userData.Id)
+	if err != nil {
+		log.Println(err)
+	}
+
+	//TODO: Redirect is funky, should be replaced with something
+	http.Redirect(w, r, "/profile/"+string(post.CreatorId), http.StatusFound)
+}
+
+func (env *environment) repostPostHandler(w http.ResponseWriter, r *http.Request) {
+	userData, err := env.readUserData(r)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
 	values, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	postIDBuf, ok := values["postID"]
-	log.Printf("localId received = %s\n", postIDBuf)
+	log.Printf("post id received = %s\n", postIDBuf)
 	if !ok || len(postIDBuf) == 0 {
-		http.Redirect(w, r, "/", http.StatusBadRequest)
+		http.Error(w, "/", http.StatusBadRequest)
 	}
-	postID, err := strconv.Atoi(postIDBuf[0])
-	postOwnerIDBuf, ok := values["postOwnerID"]
-	log.Printf("postOwnerID received = %s\n", postOwnerIDBuf)
-	if !ok || len(postIDBuf) == 0 {
-		http.Redirect(w, r, "/", http.StatusBadRequest)
+	postTextRaw := r.FormValue("body")
+	if len(postTextRaw) > 240 || len(postTextRaw) == 0 {
+		http.Error(w, "/", http.StatusFound)
+		return
 	}
+	postTextClean := env.sanitizer.Sanitize(postTextRaw)
+
+	_, err = env.db.repostUserPost([]byte(postIDBuf[0]), []byte(userData.Id), postTextClean)
 	if err != nil {
-		http.Redirect(w, r, "/", http.StatusBadRequest)
-	}
-	err = env.db.toggleLikeOnUserPost([]byte(postOwnerIDBuf[0]), postID, userData.Id)
-	if err != nil {
-		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	//TODO: Redirect is funky, should be replaced with something
-	http.Redirect(w, r, "/profile/"+postOwnerIDBuf[0], http.StatusFound)
+	http.Redirect(w, r, "/profile/"+postIDBuf[0], http.StatusFound)
 }
 
 type Page struct {
@@ -341,6 +442,12 @@ type Page struct {
 	Body  []byte
 	UData TwsUserData
 }
+
+const (
+	PostType_Post = iota
+	PostType_Repost
+	PostType_Quote
+)
 
 type twsPost struct {
 	PostId       int
@@ -350,6 +457,54 @@ type twsPost struct {
 	OwnerId      string
 	OwnerName    string
 	OwnerAvatar  string
+	Type         int
+	Repost       *twsPost
+}
+
+func (post *twsPost) ConstructUserProfileUrl() string {
+	return "/profile/" + post.OwnerId
+}
+
+func (post *twsPost) constructUserPost(db iDB, postId int) error {
+
+	dbPost, err := db.getUserPost(postId)
+	if err != nil {
+		return err
+	}
+	dbPostCreator, err := db.getUser(string(dbPost.CreatorId))
+	if err != nil {
+		return err
+	}
+
+	post.PostId = dbPost.postId
+	post.Likes = dbPost.Likes
+	post.OwnerName = string(dbPost.CreatorId)
+	post.OwnerId = string(dbPost.CreatorId)
+	post.OwnerAvatar = dbPostCreator.AvatarUrl
+	post.Text = dbPost.Text
+	post.CreationDate = string(dbPost.CreationDate)
+
+	if dbPost.RepostId > 0 {
+		if len(dbPost.Text) > 0 {
+			post.Type = PostType_Quote
+		} else {
+			post.Type = PostType_Repost
+		}
+	} else {
+		post.Type = PostType_Post
+	}
+	return nil
+}
+
+func figureOutDbPostType(post *dbPost) int {
+	if post.RepostId > 0 {
+		if len(post.Text) > 0 {
+			return PostType_Quote
+		} else {
+			return PostType_Repost
+		}
+	}
+	return PostType_Post
 }
 
 func (dest *twsPost) convertFromDBPost(src *dbPost) error {
@@ -361,12 +516,6 @@ func (dest *twsPost) convertFromDBPost(src *dbPost) error {
 	dest.CreationDate = string(src.CreationDate)
 	dest.PostId = src.postId
 	return nil
-}
-
-type ProfilePage struct {
-	SessionOwnerData TwsUserData
-	Posts            []twsPost
-	ProfileOwnerData TwsUserData
 }
 
 func (p *Page) save(dbConn iDB) error {
@@ -410,6 +559,7 @@ func (userData *TwsUserData) FillSessionData(session session.Session) {
 	log.Printf("Current session data - %+v", userData)
 }
 
+//TODO: make page an interface?
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	err := templates.ExecuteTemplate(w, tmpl+".html", p)
 	if err != nil {
