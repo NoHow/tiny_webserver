@@ -18,29 +18,31 @@ type twsDB struct {
 }
 
 type dbUserData struct {
-	AvatarUrl string
+	AvatarUrl  string
 	AdminRight UserRight
-	PostsIDs []int
+	PostsIDs   []int
 }
 
 type dbPost struct {
-	postId 			int		 `json:"-"`
-	Text  			string
-	Likes        	[]string
-	CreationDate 	[]byte	//Must be specified in twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
-	OwnerId			[]byte
+	postId       int `json:"-"`
+	Text         string
+	Likes        []string
+	CreationDate []byte //Must be specified in twsTimeFormat = "2006-01-02T15:04:05.000Z07:00"
+	CreatorId    []byte
+	RepostId     int
 }
 
 const (
-	cUsersBucket 	= "Users"
-	cPostsBucket 	= "Posts"
-	cUserID 		= "userID"
+	cUsersBucket = "Users"
+	cPostsBucket = "Posts"
+	cUserID      = "userID"
 )
 
 const (
-	cUsersBucketNotExistError 	= cUsersBucket + " bucket doesn't exist"
-	cUserNotExistError 			= "user doesn't exist"
-	cPostsBucketNotExistError 	= cPostsBucket + " bucket doesn't exist"
+	cUsersBucketNotExistError = cUsersBucket + " bucket doesn't exist"
+	cUserNotExistError        = "user doesn't exist"
+	cPostsBucketNotExistError = cPostsBucket + " bucket doesn't exist"
+	cPostNotExistError        = "post doesn't exist"
 )
 
 func createBucketIfNotExistsOrDie(bucketName []byte, db *bolt.DB) {
@@ -71,11 +73,11 @@ func InitDB() {
 	createBucketIfNotExistsOrDie([]byte("Users"), db)
 	createBucketIfNotExistsOrDie([]byte("Posts"), db)
 
-	listUsers 	:= flag.Bool("listUsers", false, "Shall we list all of the current users")
-	wipeUsers 	:= flag.Bool("wipeUsers", false, "Will wipe all user data")
-	wipePosts	:= flag.Bool("wipePosts", false, "Will wipe all user posts")
-	setAdmin 	:= flag.String("setAdmin", "", "Will set user with desired Id as Admin")
-	setUser		:= flag.String("putOnEarth", "", "Set user rights back to the common peasant")
+	listUsers := flag.Bool("listUsers", false, "Shall we list all of the current users")
+	wipeUsers := flag.Bool("wipeUsers", false, "Will wipe all user data")
+	wipePosts := flag.Bool("wipePosts", false, "Will wipe all user posts")
+	setAdmin := flag.String("setAdmin", "", "Will set user with desired Id as Admin")
+	setUser := flag.String("putOnEarth", "", "Set user rights back to the common peasant")
 	flag.Parse()
 	if *listUsers {
 		listAllUsers(db)
@@ -85,8 +87,8 @@ func InitDB() {
 		fmt.Println("Are you sure you want to DELETE ALL Users? (Yes or y)")
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
-		text = strings.Replace(text, "\r\n", "",-1)
-		text = strings.Replace(text, "\n", "",-1)
+		text = strings.Replace(text, "\r\n", "", -1)
+		text = strings.Replace(text, "\n", "", -1)
 		text = strings.ToLower(text)
 		if strings.Compare(text, "yes") == 0 || strings.Compare(text, "y") == 0 {
 			wipeBucket(db, []byte("Users"))
@@ -99,8 +101,8 @@ func InitDB() {
 		fmt.Println("Are you sure you want to DELETE ALL Posts? (Yes or y)")
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
-		text = strings.Replace(text, "\r\n", "",-1)
-		text = strings.Replace(text, "\n", "",-1)
+		text = strings.Replace(text, "\r\n", "", -1)
+		text = strings.Replace(text, "\n", "", -1)
 		text = strings.ToLower(text)
 		if strings.Compare(text, "yes") == 0 || strings.Compare(text, "y") == 0 {
 			wipeBucket(db, []byte("Posts"))
@@ -147,7 +149,7 @@ func appendPostToUser(tx *bolt.Tx, ownerID []byte, postID int) error {
 	return updateUser(tx, ownerID, appendFunc)
 }
 
-func removePostFromUser(tx *bolt.Tx, ownerID[]byte, postID int) error {
+func removePostFromUser(tx *bolt.Tx, ownerID []byte, postID int) error {
 	removeFunc := func(user *dbUserData) {
 		i, _ := utils.FindInt(user.PostsIDs, postID)
 		if i >= 0 {
@@ -168,7 +170,7 @@ func updateUser(tx *bolt.Tx, ownerID []byte, updateFunc func(user *dbUserData)) 
 		return fmt.Errorf("user with the owner id of %s doesn't exist", ownerID)
 	}
 	user := &dbUserData{}
-	err	:= json.Unmarshal(userBuf, user)
+	err := json.Unmarshal(userBuf, user)
 	if err != nil {
 		return err
 	}
@@ -182,7 +184,7 @@ func updateUser(tx *bolt.Tx, ownerID []byte, updateFunc func(user *dbUserData)) 
 	return usersBucket.Put(ownerID, userBuf)
 }
 
-func (db *twsDB) saveUserPost(ownerID []byte, postText string) (postID int, err error)  {
+func (db *twsDB) saveUserPost(ownerID []byte, postText string) (postID int, err error) {
 	log.Println("saveUserPost()")
 	if len(postText) == 0 {
 		return 0, fmt.Errorf("post text is empty\n")
@@ -199,9 +201,9 @@ func (db *twsDB) saveUserPost(ownerID []byte, postText string) (postID int, err 
 		}
 		postID = int(id)
 		post := dbPost{
-			Text: postText,
+			Text:         postText,
 			CreationDate: toTwsUTCTime(time.Now()),
-			OwnerId: ownerID,
+			CreatorId:    ownerID,
 		}
 		buf, err := json.Marshal(post)
 		if err != nil {
@@ -214,12 +216,64 @@ func (db *twsDB) saveUserPost(ownerID []byte, postText string) (postID int, err 
 			return err
 		}
 
-		return postsBucket.Put(utils.Itob(postID), buf)
+		err = postsBucket.Put(utils.Itob(postID), buf)
+		if err != nil {
+			removePostErr := removePostFromUser(tx, ownerID, postID)
+			if removePostErr != nil {
+				log.Printf("couldn't roll back appended to the user post")
+			}
+		}
+		return err
 	})
 
 	if err != nil {
 		postID = 0
 	}
+	return
+}
+
+func (db *twsDB) repostUserPost(postToRepostId []byte, reposterId []byte, reposterText string) (resultPostId int, err error) {
+	err = db.db.Update(func(tx *bolt.Tx) error {
+		postsBucket := tx.Bucket([]byte(cPostsBucket))
+		if postsBucket == nil {
+			return fmt.Errorf(cPostsBucketNotExistError)
+		}
+		postBuf := postsBucket.Get(postToRepostId)
+		if postBuf == nil {
+			return fmt.Errorf(cPostNotExistError)
+		}
+		id, err := postsBucket.NextSequence()
+		if err != nil {
+			return err
+		}
+		newPostId := int(id)
+		newPost := dbPost{
+			Text:         reposterText,
+			CreationDate: toTwsUTCTime(time.Now()),
+			CreatorId:    reposterId,
+			RepostId:     utils.Btoi(postToRepostId),
+		}
+		newPostBuf, err := json.Marshal(newPost)
+		if err != nil {
+			return err
+		}
+
+		//Add association with the owner of the post
+		err = appendPostToUser(tx, reposterId, newPostId)
+		if err != nil {
+			return err
+		}
+		err = postsBucket.Put(utils.Itob(newPostId), newPostBuf)
+		if err != nil {
+			removePostErr := removePostFromUser(tx, reposterId, newPostId)
+			if removePostErr != nil {
+				log.Printf("couldn't roll back appended to the user post")
+			}
+		} else {
+			resultPostId = newPostId
+		}
+		return err
+	})
 	return
 }
 
@@ -339,9 +393,42 @@ func (db *twsDB) getUserPost(postID int) (post dbPost, err error) {
 		if err != nil {
 			return err
 		}
+		post.postId = postID
 		return nil
 	})
 	return
+}
+
+func (db *twsDB) getUserPosts(postsId []int) ([]dbPost, error) {
+	if len(postsId) == 0 {
+		return nil, fmt.Errorf("no posts were requested")
+	}
+	posts := make([]dbPost, len(postsId))
+	err := db.db.View(func(tx *bolt.Tx) error {
+		postsBucket := tx.Bucket([]byte(cPostsBucket))
+		if postsBucket == nil {
+			return fmt.Errorf(cPostsBucketNotExistError)
+		}
+		for i, id := range postsId {
+			buf := postsBucket.Get(utils.Itob(id))
+			if buf == nil {
+				return fmt.Errorf(cPostNotExistError)
+			}
+			post := dbPost{postId: id}
+			err := json.Unmarshal(buf, &post)
+			if err != nil {
+				return err
+			}
+			posts[i] = post
+		}
+		return nil
+	})
+	if err != nil {
+		posts = nil
+	}
+
+	log.Printf("twsDB::getUserPosts will return %+v", posts)
+	return posts, err
 }
 
 func (db *twsDB) getUser(userId string) (dbUser dbUserData, err error) {

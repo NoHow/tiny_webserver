@@ -10,7 +10,7 @@
 .tws-content-main {
     margin-left: auto;
     margin-right: auto;
-    max-width: 700px;
+    max-width: 620px;
 }
 
 .tws-padding-32 {
@@ -18,8 +18,17 @@
     padding-bottom: 32px !important;
 }
 
+.tws-repost-header {
+    color: rgb(98, 106, 113);
+}
+
 .tws-post {
     margin-left: 8px;
+}
+
+.tws-quoted-post {
+    padding: 10px;
+    overflow: auto;
 }
 
 .tws-post-header-line {
@@ -116,6 +125,14 @@ h1, h2, h3, h4, h5, h6 {
     width: 83.33%;
 }
 
+.tws-col.m4 {
+    width: 32.33%;
+}
+
+.tws-col.m3 {
+    width: 24.99%;
+}
+
 .tws-col.m2 {
     width: 16.66%;
 }
@@ -155,3 +172,6 @@ p {
     margin: 2px;
 }
 
+a {
+    text-decoration: none;
+}

@@ -32,27 +32,92 @@
                 <img class="tws-avatar medium" src="{{.ProfileOwnerData.AvatarUrl}}" alt="User avatar">
             </header>
 
-            {{range $post := $.Posts}}
+            {{ $sessionOwner := .SessionOwnerData }}
+            {{ $repostType := 1 }}
+            {{ $quoteType := 2 }}
+            {{range $post := $.Posts }}
+                {{ $repost := false }}
+                {{ $quote := false }}
+                {{ $originalPost := $post }}
+                {{ $postCreatorId := $post.OwnerId }}
+                {{ $postCreatorName := $post.OwnerName }}
+                {{ $postText := $post.Text }}
+                {{ if eq $post.Type $repostType }}
+                    {{ $post = $post.Repost }}
+                    {{ $repost = true }}
+                {{ else if eq $post.Type $quoteType }}
+                    {{ $post = $post.Repost }}
+                    {{ $quote = true }}
+                {{ end }}
             <div class="tws-card tws-margin tws-container">
                 <div class="tws-col d1">
-                    <img class="tws-avatar fit" src="{{ $post.OwnerAvatar }}" alt="User avatar">
+                    {{ if $repost }}
+                    <a href="{{ $post.ConstructUserProfileUrl }}">
+                        <img class="tws-avatar fit" src="{{ $post.OwnerAvatar }}" alt="User avatar">
+                    </a>
+                    {{ else }}
+                    <a href="{{ $originalPost.ConstructUserProfileUrl }}">
+                        <img class="tws-avatar fit" src="{{ $originalPost.OwnerAvatar }}" alt="User avatar">
+                    </a>
+                    {{ end }}
                 </div>
                 <div class="tws-col d9">
                     <div class="tws-post">
+                        {{ if $repost }}
+                        <div class="tws-post-preheader-line">
+                            {{ if eq $postCreatorId $sessionOwner.Id }}
+                            <a class="tws-bold tws-repost-header" href="/profile/{{ $postCreatorId }}">
+                                <p class="tws-link tws-lineshare">
+                                    You reposted
+                                </p>
+                            </a>
+                            {{ else }}
+                            <a class="tws-bold tws-repost-header" href="{{ $post.ConstructUserProfileUrl }}">
+                                <p class="tws-link tws-lineshare">
+                                    {{ $post.OwnerName }} reposted
+                                </p>
+                            </a>
+                            {{ end }}
+                        </div>
+                        {{ end }}
                         <div class="tws-post-header-line" >
                             <p class="tws-bold tws-lineshare" style="margin: 0px;">{{ $post.OwnerName }} </p>
-                                {{  if eq $.SessionOwnerData.Id $post.OwnerId }}
-                                    <a class="tws-lineshare tws-right" href="/delete_post/?postID={{ $post.PostId }}">
-                                        <img src="../img/icons/cross-small.png" class="tws-icon-small">
-                                    </a>
-                                {{ end }}
+                            {{ if eq $.SessionOwnerData.Id $postCreatorId }}
+                            <a class="tws-lineshare tws-right" href="/delete_post/?postID={{ $post.PostId }}">
+                                <img src="../img/icons/cross-small.png" class="tws-icon-small">
+                            </a>
+                            {{ end }}
+                            {{ if $quote }}
+                            <div class="tws-post-preheader-post">
+                                <p class="tws-post-text">{{ $postText }}</p>
+                            </div>
+                            {{ end }}
                         </div>
-                        <p class="tws-post-text">{{ $post.Text }}</p>
+                        {{ if $quote }}
+                            <div class="tws-quoted-post tws-border">
+                                <div class="tws-col m1">
+                                    <img class="tws-avatar fit" src="{{ $post.OwnerAvatar }}" alt="User avatar">
+                                </div>
+                                <div class="tws-col m11">
+                                    <div class="tws-post">
+                                        <p class="tws-bold tws-lineshare" style="margin: 0px;">{{ $post.OwnerName }}</p>
+                                        <p class="tws-post-text">{{ $post.Text }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {{ else }}
+                            <p class="tws-post-text">{{ $post.Text }}</p>
+                        {{ end }}
                         <div class="tws-post-bottom-line" >
-                            <a class="tws-col tws-icon" href="/like_post/?postID={{ $post.PostId }}&postOwnerID={{ $post.OwnerId }}">
+                            <a class="tws-col tws-icon m4" href="/like_post/?postID={{ $post.PostId }}" alt="Like">
                                 <img src="../img/icons/heart.png" class="tws-icon-small tws-lineshare">
                                 <p class="tws-lineshare">{{ len $post.Likes }}</p>
                             </a>
+                            {{ if eq $quote false }}
+                            <a class="tws-col tws-icon m4" href="/compose_post/?postID={{ $post.PostId }}" alt="Repost">
+                                <img src="../img/icons/quote-right.png" class="tws-icon-small tws-lineshare">
+                            </a>
+                            {{ end }}
                         </div>
                     </div>
                 </div>

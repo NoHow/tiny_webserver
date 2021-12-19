@@ -67,6 +67,14 @@ func (db *stubDB) getUserPost(postID int) (post dbPost, err error) {
 	return
 }
 
+func (db *stubDB) getUserPosts(postsId []int) (posts []dbPost, err error) {
+	return
+}
+
+func (db *stubDB) repostUserPost(postToRepostId []byte, reposterId []byte, reposterText string) (resultPostId int, err error) {
+	return
+}
+
 type stubHttp struct {
 	dataForGet string
 	errForGet  error
