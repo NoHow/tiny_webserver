@@ -568,14 +568,18 @@ func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 }
 
 func cssHandler(w http.ResponseWriter, r *http.Request, title string) {
-	fileHandler(w, r, title, "text/css")
+	fileHandler(w, r, "text/css")
 }
 
 func iconHandler(w http.ResponseWriter, r *http.Request, title string) {
-	fileHandler(w, r, title, "image/png")
+	fileHandler(w, r, "image/png")
 }
 
-func fileHandler(w http.ResponseWriter, r *http.Request, title string, contentType string) {
+func jsHandler(w http.ResponseWriter, r *http.Request, title string) {
+	fileHandler(w, r, "text/javascript")
+}
+
+func fileHandler(w http.ResponseWriter, r *http.Request, contentType string) {
 	filename := r.URL.Path[len("/"):]
 	body, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -619,7 +623,7 @@ func init() {
 
 func Start() {
 	//This cannot be located at start, because we want to overwrite templatesPath for tests
-	templates = template.Must(template.ParseFiles(templatesPath+"edit.html", templatesPath+"view.html", templatesPath+"test.html", templatesPath+"profile.html",
+	templates = template.Must(template.New("tmpl").Delims("<<", ">>").ParseFiles(templatesPath+"edit.html", templatesPath+"view.html", templatesPath+"test.html", templatesPath+"profile.html",
 		templatesPath+"compose_post.html"))
 
 	InitDB()
@@ -653,6 +657,8 @@ func Start() {
 	http.HandleFunc("/login/", env.loginHandler)
 	http.HandleFunc("/logout/", env.logoutHandler)
 	http.HandleFunc("/tmpl/css/", makeHandler(cssHandler))
+	http.HandleFunc("/frontend/css/", makeHandler(cssHandler))
+	http.HandleFunc("/frontend/js/", makeHandler(jsHandler))
 	http.HandleFunc("/img/icons/", makeHandler(iconHandler))
 	http.HandleFunc("/", makeHandler(rootHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))

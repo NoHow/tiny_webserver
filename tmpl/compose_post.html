@@ -13,28 +13,28 @@
             </h1>
         </header>
 
-        <form class="tws-center" action="/save_post/?postID={{ .Post.PostId }}" method="POST">
+        <form class="tws-center" action="/save_post/?postID=<< .Post.PostId >>" method="POST">
             <div><textarea maxlength="240" minlength="1" name="body" rows="20" cols="80"></textarea></div>
             <div><input class="tws-button tws-padding-large tws-white tws-border" type="submit" value="Post"></div>
         </form>
 
-        {{ if gt .Post.PostId 0 }}
+        << if gt .Post.PostId 0 >>
         <div class="tws-card tws-margin tws-container">
             <div class="tws-col d1">
-                <img class="tws-avatar fit" src="{{ .Post.OwnerAvatar }}" alt="User avatar">
+                <img class="tws-avatar fit" src="<< .Post.OwnerAvatar >>" alt="User avatar">
             </div>
             <div class="tws-col d9">
                 <div class="tws-post">
                     <div class="tws-post-header-line" >
-                        <p class="tws-bold tws-lineshare" style="margin: 0px;">{{ .Post.OwnerName }} </p>
+                        <p class="tws-bold tws-lineshare" style="margin: 0px;"><< .Post.OwnerName >> </p>
                     </div>
-                    <p class="tws-post-text">{{ .Post.Text }}</p>
+                    <p class="tws-post-text"><< .Post.Text >></p>
                     <div class="tws-post-bottom-line" >
                     </div>
                 </div>
             </div>
         </div>
-        {{ end }}
+        << end >>
     </div>
 </div>
 </body>
