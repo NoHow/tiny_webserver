@@ -37,7 +37,7 @@
             << $sessionOwner := .SessionOwnerData >>
             << $repostType := 1 >>
             << $quoteType := 2 >>
-            <<range $post := $.Posts >>
+            << range $post := $.Posts >>
                 << $repost := false >>
                 << $quote := false >>
                 << $originalPost := $post >>
@@ -124,10 +124,10 @@
                     </div>
                 </div>
             </div>
-            <<end>>
+            << end >>
         </div>
     </div>
     </body>
-    <script src="../frontend/js/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <script src="../frontend/js/main.js"></script>
 </html>
