@@ -120,7 +120,7 @@ func checkIfRedirect(rec *httptest.ResponseRecorder, expectedRedirect string, t 
 
 func init() {
 	templatesPath = "../tmpl/"
-	templates = template.Must(template.ParseFiles(templatesPath+"edit.html", templatesPath+"view.html", templatesPath+"test.html", templatesPath+"profile.html"))
+	templates = template.Must(template.New("test_tmpl").Delims("<<", ">>").ParseFiles(templatesPath+"edit.html", templatesPath+"view.html", templatesPath+"test.html", templatesPath+"profile.html"))
 }
 
 func TestGetPageTitle(t *testing.T) {

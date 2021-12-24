@@ -3,29 +3,26 @@
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="stylesheet" href="/tmpl/css/tws-style.css">
-        <link rel="stylesheet" href="/tmpl/css/bulma.min.css">
+        <link rel="stylesheet" href="../frontend/css/bulma.min.css">
         <title>Profile Page</title>
     </head>
     <body class="tws-light-grey">
     <div class="tws-content" style="max-width: 1400px">
-<!--        <a class="tws-button tws-padding-large tws-white tws-border tws-left" href="/compose_post/">-->
-<!--            <b>Post</b>-->
-<!--        </a>-->
         <a class="button" href="/compose_post/">
             <b>Post</b>
         </a>
 
-        <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="{{if .SessionOwnerData.IsLogged }} /logout/ {{ else }} /login/ {{ end }}">
-            {{ if .SessionOwnerData.IsLogged }} Log out {{ else }} Login {{ end }}
+        <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="<<if .SessionOwnerData.IsLogged >> /logout/ << else >> /login/ << end >>">
+            << if .SessionOwnerData.IsLogged >> Log out << else >> Login << end >>
         </a>
         <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="/">
             Main page
         </a>
-        {{ if .SessionOwnerData.IsLogged }}
+        << if .SessionOwnerData.IsLogged >>
         <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="/profile/">
             Profile
         </a>
-        {{ end }}
+        << end >>
         <div class="tws-content-main">
             <header class="tws-container tws-center tws-padding-32">
                 <div class="tws-center">
@@ -33,102 +30,104 @@
                         <b>Profile Page</b>
                     </h1>
                 </div>
-                <p>Hello, user with the user id {{.ProfileOwnerData.Id }}!</p>
-                <img class="tws-avatar medium" src="{{.ProfileOwnerData.AvatarUrl}}" alt="User avatar">
+                <p>Hello, user with the user id <<.ProfileOwnerData.Id >>!</p>
+                <img class="tws-avatar medium" src="<<.ProfileOwnerData.AvatarUrl>>" alt="User avatar">
             </header>
 
-            {{ $sessionOwner := .SessionOwnerData }}
-            {{ $repostType := 1 }}
-            {{ $quoteType := 2 }}
-            {{range $post := $.Posts }}
-                {{ $repost := false }}
-                {{ $quote := false }}
-                {{ $originalPost := $post }}
-                {{ $postCreatorId := $post.OwnerId }}
-                {{ $postCreatorName := $post.OwnerName }}
-                {{ $postText := $post.Text }}
-                {{ if eq $post.Type $repostType }}
-                    {{ $post = $post.Repost }}
-                    {{ $repost = true }}
-                {{ else if eq $post.Type $quoteType }}
-                    {{ $post = $post.Repost }}
-                    {{ $quote = true }}
-                {{ end }}
+            << $sessionOwner := .SessionOwnerData >>
+            << $repostType := 1 >>
+            << $quoteType := 2 >>
+            <<range $post := $.Posts >>
+                << $repost := false >>
+                << $quote := false >>
+                << $originalPost := $post >>
+                << $postCreatorId := $post.OwnerId >>
+                << $postCreatorName := $post.OwnerName >>
+                << $postText := $post.Text >>
+                << if eq $post.Type $repostType >>
+                    << $post = $post.Repost >>
+                    << $repost = true >>
+                << else if eq $post.Type $quoteType >>
+                    << $post = $post.Repost >>
+                    << $quote = true >>
+                << end >>
             <div class="tws-card tws-margin tws-container">
                 <div class="tws-col d1">
-                    {{ if $repost }}
-                    <a href="{{ $post.ConstructUserProfileUrl }}">
-                        <img class="tws-avatar fit" src="{{ $post.OwnerAvatar }}" alt="User avatar">
+                    << if $repost >>
+                    <a href="<< $post.ConstructUserProfileUrl >>">
+                        <img class="tws-avatar fit" src="<< $post.OwnerAvatar >>" alt="User avatar">
                     </a>
-                    {{ else }}
-                    <a href="{{ $originalPost.ConstructUserProfileUrl }}">
-                        <img class="tws-avatar fit" src="{{ $originalPost.OwnerAvatar }}" alt="User avatar">
+                    << else >>
+                    <a href="<< $originalPost.ConstructUserProfileUrl >>">
+                        <img class="tws-avatar fit" src="<< $originalPost.OwnerAvatar >>" alt="User avatar">
                     </a>
-                    {{ end }}
+                    << end >>
                 </div>
                 <div class="tws-col d9">
                     <div class="tws-post">
-                        {{ if $repost }}
+                        << if $repost >>
                         <div class="tws-post-preheader-line">
-                            {{ if eq $postCreatorId $sessionOwner.Id }}
-                            <a class="tws-bold tws-repost-header" href="/profile/{{ $postCreatorId }}">
+                            << if eq $postCreatorId $sessionOwner.Id >>
+                            <a class="tws-bold tws-repost-header" href="/profile/<< $postCreatorId >>">
                                 <p class="tws-link tws-lineshare">
                                     You reposted
                                 </p>
                             </a>
-                            {{ else }}
-                            <a class="tws-bold tws-repost-header" href="{{ $post.ConstructUserProfileUrl }}">
+                            << else >>
+                            <a class="tws-bold tws-repost-header" href="<< $post.ConstructUserProfileUrl >>">
                                 <p class="tws-link tws-lineshare">
-                                    {{ $post.OwnerName }} reposted
+                                    << $post.OwnerName >> reposted
                                 </p>
                             </a>
-                            {{ end }}
+                            << end >>
                         </div>
-                        {{ end }}
+                        << end >>
                         <div class="tws-post-header-line" >
-                            <p class="tws-bold tws-lineshare" style="margin: 0px;">{{ $post.OwnerName }} </p>
-                            {{ if eq $.SessionOwnerData.Id $postCreatorId }}
-                            <a class="tws-lineshare tws-right" href="/delete_post/?postID={{ $post.PostId }}">
+                            <p class="tws-bold tws-lineshare" style="margin: 0px;"><< $post.OwnerName >> </p>
+                            << if eq $.SessionOwnerData.Id $postCreatorId >>
+                            <a class="tws-lineshare tws-right" href="/delete_post/?postID=<< $post.PostId >>">
                                 <img src="../img/icons/cross-small.png" class="tws-icon-small">
                             </a>
-                            {{ end }}
-                            {{ if $quote }}
+                            << end >>
+                            << if $quote >>
                             <div class="tws-post-preheader-post">
-                                <p class="tws-post-text">{{ $postText }}</p>
+                                <p class="tws-post-text"><< $postText >></p>
                             </div>
-                            {{ end }}
+                            << end >>
                         </div>
-                        {{ if $quote }}
+                        << if $quote >>
                             <div class="tws-quoted-post tws-border">
                                 <div class="tws-col m1">
-                                    <img class="tws-avatar fit" src="{{ $post.OwnerAvatar }}" alt="User avatar">
+                                    <img class="tws-avatar fit" src="<< $post.OwnerAvatar >>" alt="User avatar">
                                 </div>
                                 <div class="tws-col m11">
                                     <div class="tws-post">
-                                        <p class="tws-bold tws-lineshare" style="margin: 0px;">{{ $post.OwnerName }}</p>
-                                        <p class="tws-post-text">{{ $post.Text }}</p>
+                                        <p class="tws-bold tws-lineshare" style="margin: 0px;"><< $post.OwnerName >></p>
+                                        <p class="tws-post-text"><< $post.Text >></p>
                                     </div>
                                 </div>
                             </div>
-                        {{ else }}
-                            <p class="tws-post-text">{{ $post.Text }}</p>
-                        {{ end }}
+                        << else >>
+                            <p class="tws-post-text"><< $post.Text >></p>
+                        << end >>
                         <div class="tws-post-bottom-line" >
-                            <a class="tws-col tws-icon m4" href="/like_post/?postID={{ $post.PostId }}" alt="Like">
+                            <a class="tws-col tws-icon m4" href="/like_post/?postID=<< $post.PostId >>" alt="Like">
                                 <img src="../img/icons/heart.png" class="tws-icon-small tws-lineshare">
-                                <p class="tws-lineshare">{{ len $post.Likes }}</p>
+                                <p class="tws-lineshare"><< len $post.Likes >></p>
                             </a>
-                            {{ if eq $quote false }}
-                            <a class="tws-col tws-icon m4" href="/compose_post/?postID={{ $post.PostId }}" alt="Repost">
+                            << if eq $quote false >>
+                            <a class="tws-col tws-icon m4" href="/compose_post/?postID=<< $post.PostId >>" alt="Repost">
                                 <img src="../img/icons/quote-right.png" class="tws-icon-small tws-lineshare">
                             </a>
-                            {{ end }}
+                            << end >>
                         </div>
                     </div>
                 </div>
             </div>
-            {{end}}
+            <<end>>
         </div>
     </div>
     </body>
+    <script src="../frontend/js/vue.js"></script>
+    <script src="../frontend/js/main.js"></script>
 </html>

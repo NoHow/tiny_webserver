@@ -2,26 +2,26 @@
 <html>
     <head>
         <link rel="stylesheet" href="/tmpl/css/tws-style.css">
-        <title>{{.Title}}</title>
+        <title><<.Title>></title>
     </head>
     <body class="tws-light-grey">
     <div class="tws-content" style="max-width: 1400px">
         <p>
-            <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="{{if .UData.IsLogged }} /profile/ {{ else }} /login/ {{ end }}">
-                {{ if .UData.IsLogged }} PROFILE {{ else }} LOGIN {{ end }}
+            <a class="tws-button tws-padding-large tws-white tws-border tws-right" href="<<if .UData.IsLogged >> /profile/ << else >> /login/ << end >>">
+                << if .UData.IsLogged >> PROFILE << else >> LOGIN << end >>
             </a>
         </p>
         <header class="tws-container tws-center tws-padding-32">
             <h1>
-                <b>{{.Title}}</b>
+                <b><<.Title>></b>
             </h1>
-            <p>{{printf "%s" .Body}}</p>
+            <p><<printf "%s" .Body>></p>
         </header>
 
         <p>
-            {{if eq .UData.AdminRight 1 }}
-            <a class="tws-button tws-padding-large tws-white tws-border" href="/edit/{{.Title}}">EDIT</a>
-            {{ end }}
+            <<if eq .UData.AdminRight 1 >>
+            <a class="tws-button tws-padding-large tws-white tws-border" href="/edit/<<.Title>>">EDIT</a>
+            << end >>
         </p>
     </div>
     </body>

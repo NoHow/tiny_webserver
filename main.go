@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	//TODO: Probably add more sophiscicated logging system in the future
+	//TODO: Probably add more sophisticated logging system in the future
 	//Also the performance of this type of logging should be measured
 	enableLogs := flag.Bool("logging", false, "If true, will enable logs")
 	flag.Parse()
